@@ -59,6 +59,7 @@ public class SecurityConfig {
                     "/api/auth/**",
                     "/api/user/health",
                     "/api/public/**",
+                    "/api/detection/**",    // ✅ MUST HAVE THIS
                     "/error"
                 ).permitAll()
                 

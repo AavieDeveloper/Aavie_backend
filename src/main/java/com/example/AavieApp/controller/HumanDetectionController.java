@@ -85,11 +85,10 @@ public class HumanDetectionController {
                 }
                 
             } catch (HttpClientErrorException e) {
-                // ✅ API returned 4xx - extract the error message
                 String responseBody = e.getResponseBodyAsString();
-                System.out.println("DEBUG: API rejected with: " + responseBody);
+                System.out.println("DEBUG: API rejected with STATUS: " + e.getStatusCode());
+                System.out.println("DEBUG: API rejected with BODY: " + responseBody);
                 
-                // Parse the error message
                 try {
                     com.fasterxml.jackson.databind.ObjectMapper mapper = 
                         new com.fasterxml.jackson.databind.ObjectMapper();
@@ -104,6 +103,7 @@ public class HumanDetectionController {
                             "message", detail
                         ));
                 } catch (Exception parseError) {
+                    System.out.println("DEBUG: Could not parse error as JSON: " + parseError.getMessage());
                     return ResponseEntity.ok()
                         .body(Map.of(
                             "valid", false,
@@ -111,7 +111,6 @@ public class HumanDetectionController {
                         ));
                 }
             }
-            
             return ResponseEntity.ok()
                 .body(Map.of("valid", false, "message", "Could not analyze image."));
             
