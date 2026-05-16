@@ -1,6 +1,8 @@
 package com.example.AavieApp.controller;
 
 import com.example.AavieApp.model.TongueAnalysisResult;
+import com.example.AavieApp.model.TongueReading;
+import com.example.AavieApp.repository.TongueReadingRepository;
 import com.example.AavieApp.service.TongueService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -40,13 +42,13 @@ import java.util.Map;
 @RequestMapping("/api/tongue")
 @CrossOrigin(origins = "*")
 public class TongueController {
-
     private final TongueService service;
+    private final TongueReadingRepository tongueRepo;
 
-    public TongueController(TongueService service) {
+    public TongueController(TongueService service, TongueReadingRepository tongueRepo) {
         this.service = service;
+        this.tongueRepo = tongueRepo;
     }
-
     // ── POST /api/tongue/analyse ──────────────────────────────────────────────
     @PostMapping("/analyse")
     public ResponseEntity<?> analyse(@RequestBody AnalyseRequest req) {
@@ -112,8 +114,41 @@ public class TongueController {
     
     @PostMapping("/save")
     public ResponseEntity<?> save(@RequestBody SaveTongueRequest req) {
-        System.out.println("👅 Tongue reading saved for user: " + req.getUserId());
-        return ResponseEntity.ok(Map.of("message", "Tongue reading saved", "success", true));
+        try {
+            System.out.println("👅 Saving tongue reading for user: " + req.getUserId());
+
+            TongueReading reading = new TongueReading();
+            reading.setUserId(req.getUserId());
+            reading.setPrakriti(req.getPrakriti());
+            reading.setPcosType(req.getPcosType());
+            reading.setSelectedZone(req.getSelectedZone());
+
+            // Extract analysis fields
+            if (req.getAnalysis() instanceof java.util.Map) {
+                @SuppressWarnings("unchecked")
+                java.util.Map<String, Object> analysis = (java.util.Map<String, Object>) req.getAnalysis();
+                reading.setDominantDoshaImbalance((String) analysis.get("dominant_dosha_imbalance"));
+                reading.setAmaLevel((String) analysis.get("ama_level"));
+                reading.setAgniState((String) analysis.get("agni_state"));
+                reading.setOneLineInsight((String) analysis.get("one_line_insight"));
+                reading.setCoatingLocation((String) analysis.get("coating_location"));
+            }
+
+            tongueRepo.save(reading);
+            System.out.println("✅ Tongue reading saved successfully");
+            return ResponseEntity.ok(Map.of("message", "Tongue reading saved", "success", true));
+        } catch (Exception e) {
+            System.err.println("❌ Tongue save error: " + e.getMessage());
+            return ResponseEntity.internalServerError()
+                .body(Map.of("message", "Failed to save tongue reading"));
+        }
+    }
+
+    @GetMapping("/latest/{userId}")
+    public ResponseEntity<?> getLatest(@PathVariable Long userId) {
+        return tongueRepo.findTopByUserIdOrderByCreatedAtDesc(userId)
+            .map(t -> ResponseEntity.ok(t))
+            .orElse(ResponseEntity.notFound().build());
     }
 
     public static class SaveTongueRequest {

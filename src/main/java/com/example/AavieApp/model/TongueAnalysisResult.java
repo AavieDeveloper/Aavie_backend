@@ -1,21 +1,6 @@
 package com.example.AavieApp.model;
 
-/**
- * Aavie — TongueAnalysisResult
- *
- * Computed response from Gemini Vision API.
- * Not a JPA entity — returned directly to the app.
- *
- * Shape consumed by cycle-intelligence.tsx (TongueAnalysis interface):
- * {
- *   dominant_dosha_imbalance: string,
- *   ama_level:  "none" | "mild" | "moderate" | "heavy",
- *   agni_state: "strong" | "moderate" | "low" | "very_low",
- *   one_line_insight: string,
- *   redness_zones: string[],
- *   coating_location: string
- * }
- */
+
 public class TongueAnalysisResult {
 
     private String   dominantDoshaImbalance;  // "Vata" | "Pitta" | "Kapha" | "balanced"

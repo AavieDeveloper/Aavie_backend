@@ -45,6 +45,12 @@ public class UserProfile {
 
     @Column
     private String prakruti;
+    
+    @Column
+    private Integer height;
+
+    @Column
+    private Integer weight;
 
     @Column
     private String vikriti;
@@ -94,6 +100,10 @@ public class UserProfile {
     public void    setProfileCompletion(Integer p) { this.profileCompletion = p; }
     public String  getPrakruti()                   { return prakruti; }
     public void    setPrakruti(String prakruti)    { this.prakruti = prakruti; }
+    public Integer getHeight()                     { return height; }
+    public void    setHeight(Integer height)       { this.height = height; }
+    public Integer getWeight()                     { return weight; }
+    public void    setWeight(Integer weight)       { this.weight = weight; }
     public String  getVikriti()                    { return vikriti; }
     public void    setVikriti(String vikriti)      { this.vikriti = vikriti; }
     public LocalDateTime getCreatedAt()            { return createdAt; }

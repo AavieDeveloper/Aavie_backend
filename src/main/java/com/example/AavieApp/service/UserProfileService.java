@@ -1,8 +1,6 @@
 package com.example.AavieApp.service;
-
-
-
 import org.springframework.stereotype.Service;
+
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.AavieApp.model.UserProfile;
@@ -43,6 +41,12 @@ public class UserProfileService {
         public void    setCity(String city)   { this.city = city; }
         public String  getGender() { return gender; }
         public void    setGender(String gender) { this.gender = gender; }
+        private Integer height;
+        private Integer weight;
+        public Integer getHeight() { return height; }
+        public void    setHeight(Integer height) { this.height = height; }
+        public Integer getWeight() { return weight; }
+        public void    setWeight(Integer weight) { this.weight = weight; }
     }
  
     /** Outbound DTO — data returned to the React Native app */
@@ -68,6 +72,12 @@ public class UserProfileService {
         public ProfileResponse vikriti(String vikriti)                { this.vikriti = vikriti;               return this; }
         public ProfileResponse createdAt(String createdAt)            { this.createdAt = createdAt;           return this; }
  
+        private Integer height;
+        private Integer weight;
+        public ProfileResponse height(Integer height) { this.height = height; return this; }
+        public ProfileResponse weight(Integer weight) { this.weight = weight; return this; }
+        public Integer getHeight() { return height; }
+        public Integer getWeight() { return weight; }
         public Long    getId()                { return id; }
         public String  getName()              { return name; }
         public Integer getAge()               { return age; }
@@ -77,6 +87,7 @@ public class UserProfileService {
         public String  getPrakruti()          { return prakruti; }
         public String  getVikriti()           { return vikriti; }
         public String  getCreatedAt()         { return createdAt; }
+    
     }
  
     // ── Service Methods ───────────────────────────────────────────────────────
@@ -97,8 +108,9 @@ public class UserProfileService {
         }
  
         UserProfile profile = new UserProfile(name, req.getAge(), city, gender);
-        // Profile completion starts at 50% upon creation
         profile.setProfileCompletion(50);
+        if (req.getHeight() != null) profile.setHeight(req.getHeight());
+        if (req.getWeight() != null) profile.setWeight(req.getWeight());
  
         UserProfile saved = repo.save(profile);
         return toResponse(saved);
@@ -119,46 +131,28 @@ public class UserProfileService {
      * Update an existing profile.
      * Called by PUT /api/user/profile/{id}
      */
-    public ProfileResponse updateProfile(Long id, CreateProfileRequest req) {
-        UserProfile profile = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Profile not found with id: " + id));
- 
-        if (req.getName() != null)   profile.setName(req.getName().trim());
-        if (req.getAge()  != null)   profile.setAge(req.getAge());
-        if (req.getCity() != null)   profile.setCity(req.getCity().trim());
- 
-        // Gender is NOT updatable after creation (core to the app flow)
- 
-        // Recalculate completion: every filled field beyond base adds 10%
-        profile.setProfileCompletion(calculateCompletion(profile));
- 
-        return toResponse(repo.save(profile));
-    }
+  
  
     /**
      * Delete a profile.
      * Called by DELETE /api/user/profile/{id}
      */
-    public void deleteProfile(Long id) {
-        if (!repo.existsById(id)) {
-            throw new RuntimeException("Profile not found with id: " + id);
-        }
-        repo.deleteById(id);
-    }
- 
+  
     // ── Private Helpers ───────────────────────────────────────────────────────
  
     private ProfileResponse toResponse(UserProfile p) {
-        return new ProfileResponse()
-            .id(p.getId())
-            .name(p.getName())
-            .age(p.getAge())
-            .city(p.getCity())
-            .gender(p.getGender())
-            .profileCompletion(p.getProfileCompletion())
-            .prakruti(p.getPrakruti())
-            .vikriti(p.getVikriti())
-            .createdAt(p.getCreatedAt() != null ? p.getCreatedAt().toString() : null);
+    	return new ProfileResponse()
+    		    .id(p.getId())
+    		    .name(p.getName())
+    		    .age(p.getAge())
+    		    .city(p.getCity())
+    		    .gender(p.getGender())
+    		    .profileCompletion(p.getProfileCompletion())
+    		    .prakruti(p.getPrakruti())
+    		    .vikriti(p.getVikriti())
+    		    .height(p.getHeight())
+    		    .weight(p.getWeight())
+    		    .createdAt(p.getCreatedAt() != null ? p.getCreatedAt().toString() : null);
     }
  
     private int calculateCompletion(UserProfile p) {

@@ -1,10 +1,14 @@
 package com.example.AavieApp.controller;
 
+import com.example.AavieApp.model.CycleLog;
+
 import com.example.AavieApp.service.CycleService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.stream.Collectors;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -33,6 +37,47 @@ public class CycleController {
         }
     }
 
+    @PostMapping("/period-history")
+    public ResponseEntity<?> savePeriodHistory(@RequestBody CycleService.PeriodStartRequest req) {
+        try {
+            var result = service.savePeriodHistory(
+                req.getUserId(),
+                LocalDate.parse(req.getPeriodStartDate())
+            );
+            return ResponseEntity.ok(Map.of(
+                "message", "Period history saved",
+                "periodStartDate", result.getPeriodStartDate().toString()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                .body(Map.of("message", e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/{userId}/history")
+    public ResponseEntity<?> getCycleHistory(
+        @PathVariable Long userId,
+        @RequestParam String from,
+        @RequestParam String to
+    ) {
+        try {
+            List<CycleLog> logs = service.getCycleHistory(userId);
+            LocalDate fromDate = LocalDate.parse(from);
+            LocalDate toDate = LocalDate.parse(to);
+            
+            List<Map<String, String>> result = logs.stream()
+                .filter(l -> !l.getPeriodStartDate().isBefore(fromDate) 
+                          && !l.getPeriodStartDate().isAfter(toDate))
+                .map(l -> Map.of("periodStartDate", l.getPeriodStartDate().toString()))
+                .collect(java.util.stream.Collectors.toList());
+                
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                .body(Map.of("message", e.getMessage()));
+        }
+    }
+    
     /**
      * POST /api/cycle/period-start
      * Body: { "userId": 1, "periodStartDate": "2026-04-01" }

@@ -13,5 +13,12 @@ public interface CycleLogRepository extends JpaRepository<CycleLog, Long> {
     Optional<CycleLog> findTopByUserIdOrderByPeriodStartDateDesc(Long userId);
 
     /** All cycle logs for a user, newest first */
+    /** All cycle logs for a user, newest first */
     List<CycleLog> findByUserIdOrderByPeriodStartDateDesc(Long userId);
+
+    /** Most recent NON-history period start for a user */
+    Optional<CycleLog> findTopByUserIdAndHistoryOnlyFalseOrderByPeriodStartDateDesc(Long userId);
+
+    /** All NON-history cycle logs for a user, newest first */
+    List<CycleLog> findByUserIdAndHistoryOnlyFalseOrderByPeriodStartDateDesc(Long userId);
 }

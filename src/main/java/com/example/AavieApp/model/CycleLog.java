@@ -26,6 +26,12 @@ public class CycleLog {
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+    
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    private boolean historyOnly = false;
+
+    public boolean isHistoryOnly() { return historyOnly; }
+    public void setHistoryOnly(boolean h) { this.historyOnly = h; }
 
     @PrePersist
     protected void onCreate() {
