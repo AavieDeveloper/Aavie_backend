@@ -1,6 +1,7 @@
 package com.example.AavieApp.controller;
 
 import com.example.AavieApp.service.UserAssessmentService;
+
 import com.example.AavieApp.service.UserAssessmentService.AssessmentResponse;
 import com.example.AavieApp.service.UserAssessmentService.AssessmentStatusResponse;
 import com.example.AavieApp.service.UserAssessmentService.SubmitAssessmentRequest;
@@ -9,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import com.example.AavieApp.service.AssessmentDraftService;
 
 /**
  * Aavie — Assessment REST Controller
@@ -26,11 +28,16 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class UserAssessmentController {
 
-    private final UserAssessmentService service;
+	private final UserAssessmentService service;
+	private final AssessmentDraftService assessmentDraftService;
 
-    public UserAssessmentController(UserAssessmentService service) {
-        this.service = service;
-    }
+	public UserAssessmentController(
+	    UserAssessmentService service,
+	    AssessmentDraftService assessmentDraftService
+	) {
+	    this.service = service;
+	    this.assessmentDraftService = assessmentDraftService;
+	}
 
     // ── SUBMIT ────────────────────────────────────────────────────────────────
     /**
@@ -220,6 +227,52 @@ public class UserAssessmentController {
             "currentAssessment", req.getCurrentAssessment(),
             "success", true
         ));
+    }
+    
+ // ── SAVE DRAFT ────────────────────────────────────────────────────────────────
+    @PostMapping("/answers/save")
+    public ResponseEntity<?> saveDraft(@RequestBody DraftRequest req) {
+        try {
+            assessmentDraftService.saveDraft(req);
+            return ResponseEntity.ok(Map.of("saved", true));
+        } catch (Exception e) {
+            return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Failed to save draft."));
+        }
+    }
+
+    // ── GET DRAFT ─────────────────────────────────────────────────────────────────
+    @GetMapping("/answers/draft")
+    public ResponseEntity<?> getDraft(
+        @RequestParam Long userId,
+        @RequestParam String type
+    ) {
+        try {
+            return ResponseEntity.ok(assessmentDraftService.getDraft(userId, type));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("found", false));
+        }
+    }
+
+    // ── DRAFT DTO ─────────────────────────────────────────────────────────────────
+    public static class DraftRequest {
+        private Long userId;
+        private String assessmentType;
+        private String answersJson;
+        private Integer currentQuestion;
+        private Boolean completed;
+
+        public Long getUserId()                  { return userId; }
+        public void setUserId(Long u)            { this.userId = u; }
+        public String getAssessmentType()        { return assessmentType; }
+        public void setAssessmentType(String t)  { this.assessmentType = t; }
+        public String getAnswersJson()           { return answersJson; }
+        public void setAnswersJson(String j)     { this.answersJson = j; }
+        public Integer getCurrentQuestion()      { return currentQuestion; }
+        public void setCurrentQuestion(Integer q){ this.currentQuestion = q; }
+        public Boolean getCompleted()            { return completed; }
+        public void setCompleted(Boolean c)      { this.completed = c; }
     }
 
     // ── DTO ─────────────────────────────────────────────────────────

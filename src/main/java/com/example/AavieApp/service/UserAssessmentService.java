@@ -54,6 +54,10 @@ public class UserAssessmentService {
         private Integer liverScore;
         private String  prakritiKey;
         private String  answersJson;
+        private String selectedSignals;
+
+        public String getSelectedSignals()      { return selectedSignals; }
+        public void setSelectedSignals(String s){ this.selectedSignals = s; }
 
         // Getters & Setters
         public Long    getUserId()           { return userId; }
@@ -120,6 +124,11 @@ public class UserAssessmentService {
         private boolean pcosDone;
         private boolean vikritiDone;
         private String  nextAssessment;   // "PCOS" | "VIKRITI" | "COMPLETE"
+        
+        private String selectedSignals;
+
+        public String getSelectedSignals()      { return selectedSignals; }
+        public void setSelectedSignals(String s){ this.selectedSignals = s; }
 
         // Getters & Setters
         public Long    getId()                   { return id; }
@@ -183,6 +192,11 @@ public class UserAssessmentService {
         private String  agniType;            // e.g. "Manda" or null
         private int     completedCount;      // 0, 1, 2, or 3
 
+        private String selectedSignals;
+
+        public String getSelectedSignals()      { return selectedSignals; }
+        public void setSelectedSignals(String s){ this.selectedSignals = s; }
+        
         public boolean isPrakritiDone()          { return prakritiDone; }
         public void    setPrakritiDone(boolean b){ this.prakritiDone = b; }
         public boolean isPcosDone()              { return pcosDone; }
@@ -253,6 +267,7 @@ public class UserAssessmentService {
         pcosOpt.ifPresent(a -> {
             status.setPcosResult(a.getResultType());
             status.setPcosSeverity(a.getSeverity());
+            status.setSelectedSignals(a.getSelectedSignals());
         });
         vikritiOpt.ifPresent(a -> {
             status.setVikritiResult(a.getResultType());
@@ -338,6 +353,7 @@ public class UserAssessmentService {
         a.setLiverScore(req.getLiverScore());
         a.setPrakritiKey(req.getPrakritiKey());
         a.setAnswersJson(req.getAnswersJson());
+        a.setSelectedSignals(req.getSelectedSignals());
     }
 
     private AssessmentResponse buildResponse(UserAssessment a, Long userId) {
@@ -360,6 +376,7 @@ public class UserAssessmentService {
         r.setMetabolicScore(a.getMetabolicScore());
         r.setLiverScore(a.getLiverScore());
         r.setPrakritiKey(a.getPrakritiKey());
+        r.setSelectedSignals(a.getSelectedSignals());
         r.setCompletedAt(a.getUpdatedAt() != null ? a.getUpdatedAt().toString() : null);
 
         // Populate progress flags

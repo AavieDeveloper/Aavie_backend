@@ -95,6 +95,9 @@ public class UserAssessment {
     @Column(columnDefinition = "TEXT")
     private String answersJson;
 
+    @Column(columnDefinition = "TEXT")
+    private String selectedSignals;
+
     // ── Timestamps ────────────────────────────────────────────────────────────
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -161,6 +164,9 @@ public class UserAssessment {
 
     public Integer getStressScore()              { return stressScore; }
     public void setStressScore(Integer s)        { this.stressScore = s; }
+    
+    public String getSelectedSignals()               { return selectedSignals; }
+    public void setSelectedSignals(String s)         { this.selectedSignals = s; }
 
     public Integer getMetabolicScore()           { return metabolicScore; }
     public void setMetabolicScore(Integer m)     { this.metabolicScore = m; }
