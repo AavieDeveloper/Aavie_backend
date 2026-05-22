@@ -90,7 +90,8 @@ public class AdminController {
         stats.put("recentUsers",       recentUsers);
         return stats;
     }
- // TO:
+
+    // TO:
     @GetMapping("/users/stats")
     public Map<String, Object> getUserStats() {
         long totalUsers   = userRepo.count();
@@ -105,11 +106,11 @@ public class AdminController {
         );
     }
 
-    // ── All Users ─────────────────────────────────────────────────────────────
+    // ── All Users — OPTIMISED (2 queries instead of 3 per user) ──────────────
     @GetMapping("/users")
     public Map<String, Object> getUsers(
         @RequestParam(defaultValue = "0")   int page,
-        @RequestParam(defaultValue = "200")  int size,
+        @RequestParam(defaultValue = "200") int size,
         @RequestParam(defaultValue = "")    String search,
         @RequestParam(defaultValue = "all") String status
     ) {
@@ -119,27 +120,42 @@ public class AdminController {
         if (!search.isBlank()) {
             String q = search.toLowerCase();
             all = all.stream().filter(u ->
-                (u.getName()  != null && u.getName().toLowerCase().contains(q))  ||
-                (u.getCity()  != null && u.getCity().toLowerCase().contains(q))  ||
+                (u.getName()  != null && u.getName().toLowerCase().contains(q)) ||
+                (u.getCity()  != null && u.getCity().toLowerCase().contains(q)) ||
                 (u.getEmail() != null && u.getEmail().toLowerCase().contains(q))
             ).collect(Collectors.toList());
         }
 
-        // Map to response with assessment data
-        List<Map<String, Object>> users = all.stream().map(u -> {
-            Optional<UserAssessment> prakritiOpt = assessRepo.findByUserIdAndAssessmentType(u.getId(), "PRAKRITI");
-            Optional<UserAssessment> pcosOpt     = assessRepo.findByUserIdAndAssessmentType(u.getId(), "PCOS");
-            Optional<UserAssessment> vikritiOpt  = assessRepo.findByUserIdAndAssessmentType(u.getId(), "VIKRITI");
+        // ── ONE bulk query for all assessments instead of 3 queries per user ──────
+        // Previously: 100 users = 300 database queries
+        // Now:        100 users = 2 database queries total
+        List<Long> userIds = all.stream()
+            .map(UserProfile::getId)
+            .collect(Collectors.toList());
 
-            Map<String, Object> user = new HashMap<>();
+        List<UserAssessment> allAssessments = userIds.isEmpty()
+            ? List.of()
+            : assessRepo.findByUserIdIn(userIds);
+
+        // Build O(1) lookup map: "userId_ASSESSMENTTYPE" -> resultType
+        Map<String, String> assessmentMap = new HashMap<>();
+        for (UserAssessment a : allAssessments) {
+            String key = a.getUserId() + "_" + a.getAssessmentType();
+            assessmentMap.put(key, a.getResultType());
+        }
+
+        // Map to response using the lookup map — no DB call per user
+        List<Map<String, Object>> users = all.stream().map(u -> {
+            Map<String, Object> user = new LinkedHashMap<>();
             user.put("id",             u.getId());
             user.put("name",           u.getName());
             user.put("age",            u.getAge());
             user.put("city",           u.getCity());
             user.put("email",          u.getEmail() != null ? u.getEmail() : "");
-            user.put("prakritiResult", prakritiOpt.map(UserAssessment::getResultType).orElse(null));
-            user.put("pcosResult",     pcosOpt.map(UserAssessment::getResultType).orElse(null));
-            user.put("vikritiResult",  vikritiOpt.map(UserAssessment::getResultType).orElse(null));
+            user.put("gender",         u.getGender());
+            user.put("prakritiResult", assessmentMap.get(u.getId() + "_PRAKRITI"));
+            user.put("pcosResult",     assessmentMap.get(u.getId() + "_PCOS"));
+            user.put("vikritiResult",  assessmentMap.get(u.getId() + "_VIKRITI"));
             user.put("joinedAt",       u.getCreatedAt() != null ?
                 u.getCreatedAt().format(DateTimeFormatter.ofPattern("MMM d, yyyy")) : "");
             return user;
@@ -230,7 +246,7 @@ public class AdminController {
         stats.put("vikritiDone",       vikritiDone);
         stats.put("prakritiBreakdown", prakritiBreakdown);
         stats.put("pcosBreakdown",     pcosBreakdown);
-        stats.put("vikritiBreakdown",  vikritiBreakdown);  // ← ADD
+        stats.put("vikritiBreakdown",  vikritiBreakdown);
         return stats;
     }
 

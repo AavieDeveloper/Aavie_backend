@@ -31,4 +31,8 @@ public interface UserAssessmentRepository extends JpaRepository<UserAssessment, 
  // ADD these two methods to the existing interface:
     List<UserAssessment> findAllByAssessmentType(String assessmentType);
     List<UserAssessment> findTop10ByOrderByUpdatedAtDesc();
+    
+    
+ // Fetches ALL assessments for a list of users in ONE query
+    List<UserAssessment> findByUserIdIn(List<Long> userIds);
 }
