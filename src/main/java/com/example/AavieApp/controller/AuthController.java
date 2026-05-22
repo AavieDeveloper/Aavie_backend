@@ -12,7 +12,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
-// REMOVED: @CrossOrigin(origins = "*")  // Now handled by CorsConfig
 public class AuthController {
 
     private final AuthService service;
@@ -56,5 +55,20 @@ public class AuthController {
                 .body(Map.of("message", "Login failed. Please try again."));
         }
     }
-}
 
+    @PostMapping("/login/admin")
+    public ResponseEntity<?> adminLogin(@RequestBody LoginRequest req) {
+        try {
+            AuthResponse res = service.adminLogin(req);
+            return ResponseEntity.ok(res);
+        } catch (RuntimeException e) {
+            return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Login failed. Please try again."));
+        }
+    }
+}

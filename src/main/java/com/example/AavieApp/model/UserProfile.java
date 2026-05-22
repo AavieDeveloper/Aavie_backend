@@ -71,6 +71,13 @@ public class UserProfile {
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
     }
+    
+    @Column(nullable = false)
+    private String role = "USER";  // USER or ADMIN
+
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
+    
 
     public UserProfile() {}
 

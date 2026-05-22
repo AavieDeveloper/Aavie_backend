@@ -18,19 +18,20 @@ public class AuthService {
 
     private final UserProfileRepository repo;
     private final PasswordEncoder passwordEncoder;
-    
+
     @Autowired
     private JwtTokenProvider tokenProvider;
-    
+
     @Autowired
     private AuthenticationManager authenticationManager;
 
     public AuthService(UserProfileRepository repo, PasswordEncoder passwordEncoder) {
-        this.repo = repo;
+        this.repo            = repo;
         this.passwordEncoder = passwordEncoder;
     }
 
-    // DTOs remain the same...
+    // ── RegisterRequest ───────────────────────────────────────────────────────
+
     public static class RegisterRequest {
         private String  name;
         private Integer age;
@@ -38,65 +39,86 @@ public class AuthService {
         private String  gender;
         private String  email;
         private String  password;
-
-        // Getters and setters remain the same...
-        public String  getName()     { return name; }
-        public void    setName(String v)     { this.name = v; }
-        public Integer getAge()      { return age; }
-        public void    setAge(Integer v)     { this.age = v; }
-        public String  getCity()     { return city; }
-        public void    setCity(String v)     { this.city = v; }
-        public String  getGender()   { return gender; }
-        public void    setGender(String v)   { this.gender = v; }
-        public String  getEmail()    { return email; }
-        public void    setEmail(String v)    { this.email = v; }
-        public String  getPassword() { return password; }
-        public void    setPassword(String v) { this.password = v; }
         private Integer height;
         private Integer weight;
-        public Integer getHeight() { return height; }
-        public void    setHeight(Integer v) { this.height = v; }
-        public Integer getWeight() { return weight; }
-        public void    setWeight(Integer v) { this.weight = v; }
+
+        public String  getName()              { return name; }
+        public void    setName(String v)      { this.name = v; }
+        public Integer getAge()               { return age; }
+        public void    setAge(Integer v)      { this.age = v; }
+        public String  getCity()              { return city; }
+        public void    setCity(String v)      { this.city = v; }
+        public String  getGender()            { return gender; }
+        public void    setGender(String v)    { this.gender = v; }
+        public String  getEmail()             { return email; }
+        public void    setEmail(String v)     { this.email = v; }
+        public String  getPassword()          { return password; }
+        public void    setPassword(String v)  { this.password = v; }
+        public Integer getHeight()            { return height; }
+        public void    setHeight(Integer v)   { this.height = v; }
+        public Integer getWeight()            { return weight; }
+        public void    setWeight(Integer v)   { this.weight = v; }
     }
+
+    // ── LoginRequest ──────────────────────────────────────────────────────────
 
     public static class LoginRequest {
         private String email;
         private String password;
 
-        public String getEmail()    { return email; }
-        public void   setEmail(String v)    { this.email = v; }
-        public String getPassword() { return password; }
-        public void   setPassword(String v) { this.password = v; }
+        public String getEmail()             { return email; }
+        public void   setEmail(String v)     { this.email = v; }
+        public String getPassword()          { return password; }
+        public void   setPassword(String v)  { this.password = v; }
     }
+
+    // ── AuthResponse ──────────────────────────────────────────────────────────
 
     public static class AuthResponse {
         private Long   userId;
         private String gender;
         private String name;
         private String message;
-        private String token;        // NEW: JWT token
-        private String tokenType = "Bearer";  // NEW
+        private String token;
+        private String role;
+        private String tokenType = "Bearer";
 
-        public AuthResponse(Long userId, String gender, String name, String message, String token) {
+        // Constructor used by register() — no role needed for app users
+        public AuthResponse(Long userId, String gender, String name,
+                            String message, String token) {
             this.userId  = userId;
             this.gender  = gender;
             this.name    = name;
             this.message = message;
             this.token   = token;
+            this.role    = "USER";
         }
 
-        public Long   getUserId() { return userId; }
-        public String getGender() { return gender; }
-        public String getName()   { return name; }
-        public String getMessage(){ return message; }
-        public String getToken()  { return token; }
+        // Constructor used by login() — includes role
+        public AuthResponse(Long userId, String gender, String name,
+                            String message, String token, String role) {
+            this.userId  = userId;
+            this.gender  = gender;
+            this.name    = name;
+            this.message = message;
+            this.token   = token;
+            this.role    = role;
+        }
+
+        public Long   getUserId()    { return userId; }
+        public String getGender()    { return gender; }
+        public String getName()      { return name; }
+        public String getMessage()   { return message; }
+        public String getToken()     { return token; }
+        public String getRole()      { return role; }
         public String getTokenType() { return tokenType; }
     }
 
-    // Register method
+    // ── register() ────────────────────────────────────────────────────────────
+
     public AuthResponse register(RegisterRequest req) {
-        // Normalise
+
+        // Normalise inputs
         String email  = req.getEmail().trim().toLowerCase();
         String name   = req.getName().trim();
         String city   = req.getCity().trim();
@@ -117,7 +139,7 @@ public class AuthService {
             throw new IllegalArgumentException("Password must be at least 8 characters.");
         }
 
-        // Build and save profile
+        // Build and save profile — role defaults to USER in the entity
         UserProfile profile = new UserProfile(name, req.getAge(), city, gender);
         profile.setEmail(email);
         profile.setPasswordHash(passwordEncoder.encode(req.getPassword().trim()));
@@ -125,42 +147,88 @@ public class AuthService {
 
         if (req.getHeight() != null) profile.setHeight(req.getHeight());
         if (req.getWeight() != null) profile.setWeight(req.getWeight());
+
         UserProfile saved = repo.save(profile);
-        
-        // Generate JWT token
-        String token = tokenProvider.generateToken(saved.getId(), saved.getEmail());
-        
-        return new AuthResponse(saved.getId(), saved.getGender(), saved.getName(), 
-                               "Profile created successfully", token);
+
+        // Register does not require role — app users always get USER
+        String token = tokenProvider.generateToken(
+            saved.getId(), saved.getEmail(), saved.getRole()
+        );
+
+        return new AuthResponse(
+            saved.getId(), saved.getGender(), saved.getName(),
+            "Profile created successfully", token
+        );
     }
 
-    // Login method
+    // ── login() ───────────────────────────────────────────────────────────────
+
+    
+ // Keep existing login() for regular users - REMOVE the admin check
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest req) {
         String email = req.getEmail().trim().toLowerCase();
-        
-        // Authenticate using Spring Security
+
+        // Step 1 — Authenticate password via Spring Security
         Authentication authentication = authenticationManager.authenticate(
             new UsernamePasswordAuthenticationToken(email, req.getPassword().trim())
         );
-        
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        
+
+        // Step 2 — Load full profile
         UserProfile profile = repo.findByEmail(email)
             .orElseThrow(() -> new RuntimeException("No account found with this email."));
-        
-        // Generate JWT token
-        String token = tokenProvider.generateToken(profile.getId(), profile.getEmail());
-        
-        return new AuthResponse(profile.getId(), profile.getGender(), profile.getName(), 
-                               "Login successful", token);
+
+        // REMOVED: Admin check - regular users should be able to login
+
+        // Step 3 — Generate JWT with role embedded
+        String token = tokenProvider.generateToken(
+            profile.getId(), profile.getEmail(), profile.getRole()
+        );
+
+        // Step 4 — Return response
+        return new AuthResponse(
+            profile.getId(), profile.getGender(), profile.getName(),
+            "Login successful", token, profile.getRole()
+        );
     }
 
-    // Helper
+    // NEW: Admin-specific login
+    @Transactional(readOnly = true)
+    public AuthResponse adminLogin(LoginRequest req) {
+        String email = req.getEmail().trim().toLowerCase();
+
+        // Step 1 — Authenticate password
+        Authentication authentication = authenticationManager.authenticate(
+            new UsernamePasswordAuthenticationToken(email, req.getPassword().trim())
+        );
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        // Step 2 — Load full profile
+        UserProfile profile = repo.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("No account found with this email."));
+
+        // Step 3 — Admin-only check
+        if (!"ADMIN".equals(profile.getRole())) {
+            throw new RuntimeException("Access denied. Admin credentials required.");
+        }
+
+        // Step 4 — Generate JWT
+        String token = tokenProvider.generateToken(
+            profile.getId(), profile.getEmail(), profile.getRole()
+        );
+
+        // Step 5 — Return response
+        return new AuthResponse(
+            profile.getId(), profile.getGender(), profile.getName(),
+            "Admin login successful", token, profile.getRole()
+        );
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+
     private String capitalize(String s) {
         if (s == null || s.isEmpty()) return s;
         return Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase();
     }
 }
-
-

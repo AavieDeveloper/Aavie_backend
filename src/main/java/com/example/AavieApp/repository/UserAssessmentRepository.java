@@ -24,4 +24,11 @@ public interface UserAssessmentRepository extends JpaRepository<UserAssessment, 
 
     /** Count how many assessments a user has completed */
     long countByUserId(Long userId);
+    
+    long countByAssessmentType(String assessmentType);
+    
+    
+ // ADD these two methods to the existing interface:
+    List<UserAssessment> findAllByAssessmentType(String assessmentType);
+    List<UserAssessment> findTop10ByOrderByUpdatedAtDesc();
 }

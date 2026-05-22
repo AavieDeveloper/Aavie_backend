@@ -62,7 +62,7 @@ public class SecurityConfig {
                     "/api/detection/**",    // ✅ MUST HAVE THIS
                     "/error"
                 ).permitAll()
-                
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // All other endpoints require authentication
                 .anyRequest().authenticated()
             )
