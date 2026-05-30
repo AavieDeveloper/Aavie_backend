@@ -1,12 +1,18 @@
 package com.example.AavieApp.controller;
 
 import com.example.AavieApp.model.UserAssessment;
+
 import com.example.AavieApp.model.UserProfile;
 import com.example.AavieApp.repository.ArticleRepository;
+import com.example.AavieApp.repository.ManufacturingRunRepository;
+import com.example.AavieApp.model.ManufacturingRun;
 import com.example.AavieApp.repository.UserProfileRepository;
 import com.example.AavieApp.repository.UserAssessmentRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import com.example.AavieApp.model.TongueReading;
+import com.example.AavieApp.repository.TongueReadingRepository;
 
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -23,15 +29,21 @@ public class AdminController {
     private final UserProfileRepository    userRepo;
     private final UserAssessmentRepository assessRepo;
     private final ArticleRepository        articleRepo;
+    private final TongueReadingRepository tongueRepo;
+    private final ManufacturingRunRepository mfgRepo;
 
     public AdminController(
         UserProfileRepository userRepo,
         UserAssessmentRepository assessRepo,
-        ArticleRepository articleRepo
+        ArticleRepository articleRepo,
+        TongueReadingRepository tongueRepo,
+        ManufacturingRunRepository mfgRepo  // ← ADD
     ) {
         this.userRepo    = userRepo;
         this.assessRepo  = assessRepo;
         this.articleRepo = articleRepo;
+        this.tongueRepo  = tongueRepo;
+        this.mfgRepo     = mfgRepo;  // ← ADD
     }
 
     // ── Dashboard Stats ───────────────────────────────────────────────────────
@@ -153,6 +165,9 @@ public class AdminController {
             user.put("city",           u.getCity());
             user.put("email",          u.getEmail() != null ? u.getEmail() : "");
             user.put("gender",         u.getGender());
+            user.put("height",         u.getHeight());            // ← ADD THIS
+            user.put("weight",         u.getWeight());  
+            user.put("mobileNumber",   u.getMobileNumber());  // ← ADD THIS LINE
             user.put("prakritiResult", assessmentMap.get(u.getId() + "_PRAKRITI"));
             user.put("pcosResult",     assessmentMap.get(u.getId() + "_PCOS"));
             user.put("vikritiResult",  assessmentMap.get(u.getId() + "_VIKRITI"));
@@ -188,6 +203,8 @@ public class AdminController {
             Optional<UserAssessment> prakritiOpt = assessRepo.findByUserIdAndAssessmentType(userId, "PRAKRITI");
             Optional<UserAssessment> pcosOpt     = assessRepo.findByUserIdAndAssessmentType(userId, "PCOS");
             Optional<UserAssessment> vikritiOpt  = assessRepo.findByUserIdAndAssessmentType(userId, "VIKRITI");
+            Optional<TongueReading>  tongueOpt   = tongueRepo.findTopByUserIdOrderByCreatedAtDesc(userId);
+            Optional<ManufacturingRun> mfgOpt    = mfgRepo.findByUserIdAndAssessmentType(userId, "PCOS");  // ← ADD
 
             Map<String, Object> user = new HashMap<>();
             user.put("id",             u.getId());
@@ -195,16 +212,39 @@ public class AdminController {
             user.put("age",            u.getAge());
             user.put("city",           u.getCity());
             user.put("email",          u.getEmail() != null ? u.getEmail() : "");
+            user.put("gender",         u.getGender());
+            user.put("height",         u.getHeight());
+            user.put("weight",         u.getWeight());
+            user.put("mobileNumber",   u.getMobileNumber());  // ← ADD THIS LINE
+            
             user.put("prakritiResult", prakritiOpt.map(UserAssessment::getResultType).orElse(null));
             user.put("pcosResult",     pcosOpt.map(UserAssessment::getResultType).orElse(null));
             user.put("pcosSeverity",   pcosOpt.map(UserAssessment::getSeverity).orElse(null));
             user.put("vikritiResult",  vikritiOpt.map(UserAssessment::getResultType).orElse(null));
-            user.put("joinedAt",       u.getCreatedAt() != null ?
+            
+            // ── Tongue analysis ───────────────────────────────────────────────────
+            tongueOpt.ifPresent(t -> {
+                user.put("tongueAnalysis", buildTongueAnalysisText(t));
+            });
+            
+            // ── Manufacturing/Formula data ────────────────────────────────────────
+            mfgOpt.ifPresent(mfg -> {
+                Map<String, Object> formula = new HashMap<>();
+                formula.put("formulaJson", mfg.getFormulaJson());
+                formula.put("doshaPct",    mfg.getDoshaPct());
+                formula.put("severity",    mfg.getSeverity());
+                formula.put("prakriti",    mfg.getPrakriti());
+                formula.put("revealed",    mfg.isRevealed());
+                formula.put("createdAt",   mfg.getCreatedAt() != null ?
+                    mfg.getCreatedAt().format(DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm")) : "");
+                user.put("herbFormula", formula);
+            });
+            
+            user.put("joinedAt", u.getCreatedAt() != null ?
                 u.getCreatedAt().format(DateTimeFormatter.ofPattern("MMM d, yyyy")) : "");
             return ResponseEntity.ok(user);
         }).orElse(ResponseEntity.notFound().build());
     }
-
     // ── Assessment Overview ───────────────────────────────────────────────────
     @GetMapping("/assessments/overview")
     public Map<String, Object> getAssessmentOverview() {
@@ -263,5 +303,31 @@ public class AdminController {
                 a.getUpdatedAt().format(DateTimeFormatter.ofPattern("MMM d, HH:mm")) : "");
             return act;
         }).collect(Collectors.toList());
+    }
+    
+    private String buildTongueAnalysisText(TongueReading t) {
+        StringBuilder sb = new StringBuilder();
+        
+        if (t.getOneLineInsight() != null && !t.getOneLineInsight().isBlank()) {
+            sb.append(t.getOneLineInsight()).append("\n\n");
+        }
+        
+        sb.append("Dominant Dosha Imbalance: ")
+          .append(t.getDominantDoshaImbalance() != null ? t.getDominantDoshaImbalance() : "—")
+          .append("\n");
+        
+        sb.append("Ama Level: ")
+          .append(t.getAmaLevel() != null ? t.getAmaLevel() : "—")
+          .append("\n");
+        
+        sb.append("Agni State: ")
+          .append(t.getAgniState() != null ? t.getAgniState() : "—")
+          .append("\n");
+        
+        if (t.getCoatingLocation() != null && !t.getCoatingLocation().equals("none")) {
+            sb.append("Coating Location: ").append(t.getCoatingLocation()).append("\n");
+        }
+        
+        return sb.toString().trim();
     }
 }

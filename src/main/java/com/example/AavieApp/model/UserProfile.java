@@ -12,28 +12,20 @@ public class UserProfile {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank(message = "Name is required")
-    @Size(min = 2, max = 120)
-    @Column(nullable = false)
+    @Column
     private String name;
 
-    @NotNull(message = "Age is required")
-    @Min(1) @Max(120)
-    @Column(nullable = false)
+    @Column
     private Integer age;
 
-    @NotBlank(message = "City is required")
-    @Size(min = 2, max = 120)
-    @Column(nullable = false)
+    @Column
     private String city;
 
-    @NotBlank(message = "Gender is required")
-    @Pattern(regexp = "^(Male|Female)$")
-    @Column(nullable = false)
+    @Column
     private String gender;
 
     /** Email — unique, used for login */
-    @Column(unique = true)
+    @Column(unique = true) 
     private String email;
 
     /** BCrypt hashed password */
@@ -41,7 +33,7 @@ public class UserProfile {
     private String passwordHash;
 
     @Column(nullable = false, columnDefinition = "INT DEFAULT 50")
-    private Integer profileCompletion = 50;
+    private Integer profileCompletion = 50; 
 
     @Column
     private String prakruti;
@@ -51,6 +43,9 @@ public class UserProfile {
 
     @Column
     private Integer weight;
+    
+    @Column(unique = true)
+    private String mobileNumber;
 
     @Column
     private String vikriti;
@@ -78,6 +73,7 @@ public class UserProfile {
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
     
+ 
 
     public UserProfile() {}
 
@@ -87,6 +83,7 @@ public class UserProfile {
         this.city   = city;
         this.gender = gender;
     }
+    
 
     // ── Getters & Setters ─────────────────────────────────────────────────
     public Long    getId()                         { return id; }
@@ -115,4 +112,7 @@ public class UserProfile {
     public void    setVikriti(String vikriti)      { this.vikriti = vikriti; }
     public LocalDateTime getCreatedAt()            { return createdAt; }
     public LocalDateTime getUpdatedAt()            { return updatedAt; }
+    
+    public String getMobileNumber()              { return mobileNumber; }
+    public void   setMobileNumber(String mobile) { this.mobileNumber = mobile; }
 }

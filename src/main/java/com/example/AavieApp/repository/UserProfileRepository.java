@@ -30,4 +30,7 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, Long> 
     /** Fetch profiles with incomplete assessment */
     @Query("SELECT u FROM UserProfile u WHERE u.profileCompletion < 100 ORDER BY u.createdAt DESC")
     List<UserProfile> findIncompleteProfiles();
+    
+    
+    Optional<UserProfile> findByMobileNumber(String mobileNumber);
 }
