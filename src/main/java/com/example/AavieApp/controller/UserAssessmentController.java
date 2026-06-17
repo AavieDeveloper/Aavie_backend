@@ -96,10 +96,20 @@ public class UserAssessmentController {
             AssessmentResponse response = service.submitAssessment(req);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalStateException e) {
-            // Order not followed
+            String msg = e.getMessage();
+            if (msg != null && msg.startsWith("COOLDOWN:")) {
+                String daysLeft = msg.replace("COOLDOWN:", "");
+                return ResponseEntity
+                    .status(HttpStatus.FORBIDDEN)
+                    .body(Map.of(
+                        "message", "You can retake the PCOS assessment in " + daysLeft + " days.",
+                        "error", "COOLDOWN",
+                        "daysRemaining", Long.parseLong(daysLeft)
+                    ));
+            }
             return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
-                .body(Map.of("message", e.getMessage(), "error", "ORDER_VIOLATION"));
+                .body(Map.of("message", msg, "error", "ORDER_VIOLATION"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)

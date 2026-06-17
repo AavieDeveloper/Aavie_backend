@@ -233,7 +233,6 @@ public class OtpService {
     // ── 2Factor sender ────────────────────────────────────────────────────────
     private boolean sendVisFast2SMS(String mobileNumber, String otp) {
         try {
-            // Remove +91 prefix
             String number = mobileNumber.startsWith("+91")
                 ? mobileNumber.substring(3)
                 : mobileNumber;
@@ -244,22 +243,32 @@ public class OtpService {
                 + "/" + otp
                 + "/AUTOGEN2";
 
-            HttpClient client = HttpClient.newHttpClient();
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .GET()
-                .build();
+            System.out.println("2Factor URL: " + url);
 
-            HttpResponse<String> response = client.send(
-                request, HttpResponse.BodyHandlers.ofString()
-            );
+            java.net.URL apiUrl = new java.net.URL(url);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) apiUrl.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setRequestProperty("User-Agent", "AAVIE-Backend/1.0");
 
-            System.out.println("2Factor response: " + response.body());
-            return response.statusCode() == 200
-                && response.body().contains("\"Status\":\"Success\"");
+            int statusCode = conn.getResponseCode();
+
+            java.io.InputStream stream = statusCode == 200
+                ? conn.getInputStream()
+                : conn.getErrorStream();
+
+            String body = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            stream.close();
+            conn.disconnect();
+
+            System.out.println("2Factor status: " + statusCode);
+            System.out.println("2Factor response: " + body);
+
+            return statusCode == 200 && body.contains("\"Status\":\"Success\"");
 
         } catch (Exception e) {
-            System.out.println("2Factor error: " + e.getMessage());
+            System.out.println("2Factor error: " + e.getClass().getName() + " — " + e.getMessage());
             return false;
         }
     }

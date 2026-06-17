@@ -77,6 +77,8 @@ public class UserAssessment {
 
     // ── Vikriti specific ─────────────────────────────────────────────────────
     @Column private String  agniType;          // "Sama" | "Vishama" | "Tikshna" | "Manda"
+    
+    @Column private Boolean amaDetected;
     @Column private Integer energyScore;
     @Column private Integer sleepScore;
     @Column private Integer stressScore;
@@ -105,6 +107,9 @@ public class UserAssessment {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "last_completed_at")
+    private LocalDateTime lastCompletedAt;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
@@ -132,6 +137,9 @@ public class UserAssessment {
     public String getResultType()                { return resultType; }
     public void setResultType(String r)          { this.resultType = r; }
 
+    public LocalDateTime getLastCompletedAt()         { return lastCompletedAt; }
+    public void setLastCompletedAt(LocalDateTime v)   { this.lastCompletedAt = v; }
+    
     public String getSeverity()                  { return severity; }
     public void setSeverity(String s)            { this.severity = s; }
 
@@ -155,6 +163,9 @@ public class UserAssessment {
 
     public String getAgniType()                  { return agniType; }
     public void setAgniType(String a)            { this.agniType = a; }
+    
+    public Boolean getAmaDetected()              { return amaDetected; }
+    public void setAmaDetected(Boolean a)        { this.amaDetected = a; }
 
     public Integer getEnergyScore()              { return energyScore; }
     public void setEnergyScore(Integer e)        { this.energyScore = e; }

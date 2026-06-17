@@ -2,6 +2,7 @@ package com.example.AavieApp.controller;
 
 import com.example.AavieApp.model.UserAssessment;
 
+
 import com.example.AavieApp.model.UserProfile;
 import com.example.AavieApp.repository.ArticleRepository;
 import com.example.AavieApp.repository.ManufacturingRunRepository;
@@ -194,6 +195,17 @@ public class AdminController {
         List<Map<String, Object>> paged = from < total ? users.subList(from, to) : List.of();
 
         return Map.of("users", paged, "total", total, "page", page, "size", size);
+    }
+    
+    @DeleteMapping("/users/{userId}")
+    public ResponseEntity<?> deleteUser(@PathVariable Long userId) {
+        return userRepo.findById(userId).map(u -> {
+            // Delete user's assessments first
+            assessRepo.deleteByUserId(userId);
+            // Delete user profile
+            userRepo.delete(u);
+            return ResponseEntity.ok(Map.of("message", "User deleted successfully"));
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     // ── Single User ───────────────────────────────────────────────────────────

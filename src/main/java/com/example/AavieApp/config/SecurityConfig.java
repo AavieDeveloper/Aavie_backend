@@ -59,7 +59,8 @@ public class SecurityConfig {
                     "/api/auth/**",
                     "/api/user/health",
                     "/api/public/**",
-                    "/api/detection/**",    // ✅ MUST HAVE THIS
+                    "/api/detection/**", 
+                    "/api/cycle/**",// ✅ MUST HAVE THIS
                     "/error"
                 ).permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")

@@ -1,6 +1,7 @@
 package com.example.AavieApp.controller;
 
 import com.example.AavieApp.service.OtpService;
+
 import com.example.AavieApp.service.OtpService.CompleteProfileRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

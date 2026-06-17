@@ -2,7 +2,9 @@ package com.example.AavieApp.repository;
 
 import com.example.AavieApp.model.UserAssessment;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +29,9 @@ public interface UserAssessmentRepository extends JpaRepository<UserAssessment, 
     
     long countByAssessmentType(String assessmentType);
     
+    @Modifying
+    @Transactional
+    void deleteByUserId(Long userId);
     
  // ADD these two methods to the existing interface:
     List<UserAssessment> findAllByAssessmentType(String assessmentType);

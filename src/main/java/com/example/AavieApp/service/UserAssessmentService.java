@@ -55,9 +55,16 @@ public class UserAssessmentService {
         private String  prakritiKey;
         private String  answersJson;
         private String selectedSignals;
+        
+
 
         public String getSelectedSignals()      { return selectedSignals; }
         public void setSelectedSignals(String s){ this.selectedSignals = s; }
+        
+        private Boolean amaDetected;
+        public Boolean getAmaDetected()          { return amaDetected; }
+        public void setAmaDetected(Boolean a)    { this.amaDetected = a; }
+
 
         // Getters & Setters
         public Long    getUserId()           { return userId; }
@@ -129,6 +136,10 @@ public class UserAssessmentService {
 
         public String getSelectedSignals()      { return selectedSignals; }
         public void setSelectedSignals(String s){ this.selectedSignals = s; }
+        
+        private Boolean amaDetected;
+        public Boolean getAmaDetected()          { return amaDetected; }
+        public void setAmaDetected(Boolean a)    { this.amaDetected = a; }
 
         // Getters & Setters
         public Long    getId()                   { return id; }
@@ -191,6 +202,9 @@ public class UserAssessmentService {
         private String  vikritiResult;       // e.g. "Vata Vikriti" or null
         private String  agniType;            // e.g. "Manda" or null
         private int     completedCount;      // 0, 1, 2, or 3
+        private int     pcosRetakeDaysRemaining;
+        private String  pcosLastCompletedAt;      // 0, 1, 2, or 3
+        
 
         private String selectedSignals;
 
@@ -215,8 +229,14 @@ public class UserAssessmentService {
         public void    setVikritiResult(String r){ this.vikritiResult = r; }
         public String  getAgniType()             { return agniType; }
         public void    setAgniType(String a)     { this.agniType = a; }
-        public int     getCompletedCount()       { return completedCount; }
-        public void    setCompletedCount(int c)  { this.completedCount = c; }
+        public int     getCompletedCount()              { return completedCount; }
+        public void    setCompletedCount(int c)         { this.completedCount = c; }
+        public int     getPcosRetakeDaysRemaining()     { return pcosRetakeDaysRemaining; }
+        public void    setPcosRetakeDaysRemaining(int d){ this.pcosRetakeDaysRemaining = d; }
+        public String  getPcosLastCompletedAt()         { return pcosLastCompletedAt; }
+        public void    setPcosLastCompletedAt(String d) { this.pcosLastCompletedAt = d; }
+        
+        
     }
 
     // ── Service Methods ───────────────────────────────────────────────────────
@@ -268,6 +288,15 @@ public class UserAssessmentService {
             status.setPcosResult(a.getResultType());
             status.setPcosSeverity(a.getSeverity());
             status.setSelectedSignals(a.getSelectedSignals());
+            if (a.getLastCompletedAt() != null) {
+                long daysSince = java.time.temporal.ChronoUnit.DAYS.between(
+                    a.getLastCompletedAt(),
+                    java.time.LocalDateTime.now()
+                );
+                long daysRemaining = 25 - daysSince;
+                status.setPcosRetakeDaysRemaining(daysRemaining > 0 ? (int) daysRemaining : 0);
+                status.setPcosLastCompletedAt(a.getLastCompletedAt().toString());
+            }
         });
         vikritiOpt.ifPresent(a -> {
             status.setVikritiResult(a.getResultType());
@@ -312,6 +341,20 @@ public class UserAssessmentService {
                         "You must complete the Prakriti assessment before taking the PCOS assessment."
                     );
                 }
+                // 30-day cooldown on retake
+                repo.findByUserIdAndAssessmentType(userId, TYPE_PCOS).ifPresent(existing -> {
+                    if (existing.getLastCompletedAt() != null) {
+                        long daysSince = java.time.temporal.ChronoUnit.DAYS.between(
+                            existing.getLastCompletedAt(),
+                            java.time.LocalDateTime.now()
+                        );
+                        if (daysSince < 25) {
+                            throw new IllegalStateException(
+                                "COOLDOWN:" + (25 - daysSince)
+                            );
+                        }
+                    }
+                });
                 break;
             case TYPE_VIKRITI:
                 if (!repo.existsByUserIdAndAssessmentType(userId, TYPE_PRAKRITI)) {
@@ -337,6 +380,7 @@ public class UserAssessmentService {
     private void mapRequestToEntity(SubmitAssessmentRequest req, UserAssessment a) {
         a.setUserId(req.getUserId());
         a.setAssessmentType(req.getAssessmentType());
+        a.setLastCompletedAt(java.time.LocalDateTime.now());
         a.setResultType(req.getResultType());
         a.setSeverity(req.getSeverity());
         a.setConfidenceScore(req.getConfidenceScore());
@@ -354,6 +398,8 @@ public class UserAssessmentService {
         a.setPrakritiKey(req.getPrakritiKey());
         a.setAnswersJson(req.getAnswersJson());
         a.setSelectedSignals(req.getSelectedSignals());
+        
+        a.setAmaDetected(req.getAmaDetected());
     }
 
     private AssessmentResponse buildResponse(UserAssessment a, Long userId) {
@@ -378,6 +424,8 @@ public class UserAssessmentService {
         r.setPrakritiKey(a.getPrakritiKey());
         r.setSelectedSignals(a.getSelectedSignals());
         r.setCompletedAt(a.getUpdatedAt() != null ? a.getUpdatedAt().toString() : null);
+        
+        r.setAmaDetected(a.getAmaDetected());
 
         // Populate progress flags
         boolean prakritiDone = repo.existsByUserIdAndAssessmentType(userId, TYPE_PRAKRITI);
