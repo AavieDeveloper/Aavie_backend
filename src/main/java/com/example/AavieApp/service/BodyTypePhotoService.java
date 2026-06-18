@@ -14,7 +14,7 @@ import java.util.Map;
 public class BodyTypePhotoService {
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final String PHOTO_API_URL = "https://bodytype.aisense.co.in/predict";
+    private final String PHOTO_API_URL = "http://88.222.212.15:8050/predict";
 
     /**
      * Analyze body photo and return dosha scores

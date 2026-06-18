@@ -1,5 +1,6 @@
 package com.example.AavieApp.controller;
 
+import com.example.AavieApp.model.SupplementOrder;
 import com.example.AavieApp.service.ProtocolService;
 
 import com.example.AavieApp.service.ProtocolService.OrderRequest;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -186,6 +188,56 @@ public ResponseEntity<?> verifyPayment(@RequestBody Map<String, String> body) {
                 .body(Map.of("message", "Failed to fetch plan: " + e.getMessage()));
         }
     }
+    
+    
+    
+ // ── GET /api/protocol/orders/{userId}/can-reorder ─────────────────────────
+ // Returns whether user can place a new order + days remaining if not
+ @GetMapping("/orders/{userId}/can-reorder")
+ public ResponseEntity<?> canReorder(@PathVariable Long userId) {
+     try {
+         Optional<SupplementOrder> latestOpt =
+             orderRepo.findTopByUserIdOrderByOrderedAtDesc(userId);
+
+         if (latestOpt.isEmpty()) {
+             return ResponseEntity.ok(Map.of(
+                 "canOrder", true,
+                 "daysRemaining", 0
+             ));
+         }
+
+         SupplementOrder latest = latestOpt.get();
+         if (latest.getOrderedAt() == null) {
+             return ResponseEntity.ok(Map.of(
+                 "canOrder", true,
+                 "daysRemaining", 0
+             ));
+         }
+
+         long daysSince = java.time.temporal.ChronoUnit.DAYS.between(
+             latest.getOrderedAt(),
+             java.time.LocalDateTime.now()
+         );
+         long daysRemaining = 30 - daysSince;
+
+         if (daysRemaining <= 0) {
+             return ResponseEntity.ok(Map.of(
+                 "canOrder", true,
+                 "daysRemaining", 0
+             ));
+         }
+
+         return ResponseEntity.ok(Map.of(
+             "canOrder", false,
+             "daysRemaining", (int) daysRemaining
+         ));
+     } catch (Exception e) {
+         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+             .body(Map.of("message", "Failed to check reorder: " + e.getMessage()));
+     }
+ }
+    
+    
 
     // ── GET /api/protocol/orders/{userId} ─────────────────────────────────────
     // Called on MyOrdersScreen — returns all orders newest first.
