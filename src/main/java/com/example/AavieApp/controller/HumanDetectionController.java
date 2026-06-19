@@ -16,7 +16,7 @@ public class HumanDetectionController {
 
     // ✅ NEW SINGLE API - Does both human detection + body type
     private final String BODY_TYPE_PREDICT_API = 
-        "https://bodytype.aisense.co.in/predict";
+        "http://88.222.212.15:8050/predict";
 
     /**
      * POST /api/detection/validate-and-forward
