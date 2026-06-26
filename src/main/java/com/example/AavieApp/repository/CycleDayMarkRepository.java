@@ -30,6 +30,9 @@ public interface CycleDayMarkRepository extends JpaRepository<CycleDayMark, Long
     List<CycleDayMark> findAllPeriodMarksByUserId(Long userId);
 
     List<CycleDayMark> findByUserIdAndCycleIdIsNull(Long userId);
+    
+    @Query("SELECT COUNT(c) FROM CycleDayMark c WHERE c.userId = :userId AND c.markType = 1 AND c.markDate >= :from AND c.markDate <= :to")
+    long countPeriodMarksByUserIdAndDateRange(@Param("userId") Long userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 
     /** Count marks of a given type within a cycle */
     @Query("SELECT COUNT(c) FROM CycleDayMark c WHERE c.cycleId = :cycleId AND c.markType = :markType")

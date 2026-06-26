@@ -1,6 +1,7 @@
 package com.example.AavieApp.service;
 
 import com.example.AavieApp.model.*;
+
 import com.example.AavieApp.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,7 +12,10 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Aavie — CycleService (v2)
@@ -98,8 +102,17 @@ public class CycleService {
         private Map<String, Long> moodCounts;
         private Map<String, Long> dischargeCounts;
         private Map<String, Long> symptomCounts;
-        
-   
+        private int avgCycleLength;
+        private int patternCycleCount;
+        private int cycleVariation;
+        private int actualCycleLength;
+        private int periodLengthMin;
+        private int periodLengthMax;
+        private String pcosResult;
+        private String prakritiResult;
+        private Map<String, Integer> energyByDay;
+        private Map<String, Integer> sleepByDay;
+        private Map<String, Integer> stressByDay;
 
         public long   getCycleId()                         { return cycleId; }
         public void   setCycleId(long v)                   { this.cycleId = v; }
@@ -131,17 +144,35 @@ public class CycleService {
         public void   setDischargeCounts(Map<String, Long> v) { this.dischargeCounts = v; }
         public Map<String, Long> getSymptomCounts()        { return symptomCounts; }
         public void   setSymptomCounts(Map<String, Long> v){ this.symptomCounts = v; }
-        
-        private int avgCycleLength;
-        private int patternCycleCount;
-        private int cycleVariation;
+    
+
         public int  getAvgCycleLength()           { return avgCycleLength; }
         public void setAvgCycleLength(int v)      { this.avgCycleLength = v; }
         public int  getPatternCycleCount()        { return patternCycleCount; }
         public void setPatternCycleCount(int v)   { this.patternCycleCount = v; }
         public int  getCycleVariation()           { return cycleVariation; }
         public void setCycleVariation(int v)      { this.cycleVariation = v; }
-    }
+        public int  getActualCycleLength()        { return actualCycleLength; }
+        public void setActualCycleLength(int v)   { this.actualCycleLength = v; }
+        @com.fasterxml.jackson.annotation.JsonProperty("periodLengthMin")
+        public int  getPeriodLengthMin()          { return periodLengthMin; }
+        public void setPeriodLengthMin(int v)     { this.periodLengthMin = v; }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("periodLengthMax")
+        public int  getPeriodLengthMax()          { return periodLengthMax; }
+        public void setPeriodLengthMax(int v)     { this.periodLengthMax = v; }
+        public Map<String, Integer> getEnergyByDay()              { return energyByDay; }
+        public void setEnergyByDay(Map<String, Integer> v)        { this.energyByDay = v; }
+        public Map<String, Integer> getSleepByDay()               { return sleepByDay; }
+        public void setSleepByDay(Map<String, Integer> v)         { this.sleepByDay = v; }
+        public Map<String, Integer> getStressByDay()              { return stressByDay; }
+        public void setStressByDay(Map<String, Integer> v)        { this.stressByDay = v; }
+        
+        public String getPcosResult()              { return pcosResult; }
+        public void   setPcosResult(String v)      { this.pcosResult = v; }
+        public String getPrakritiResult()          { return prakritiResult; }
+        public void   setPrakritiResult(String v)  { this.prakritiResult = v; }
+    } // ← closes CycleStateResponse
 
     public static class SaveDailyLogRequest {
         private Long         userId;
@@ -480,17 +511,50 @@ public class CycleService {
         // ── Previous cycle stats for 3-cycle comparison ─────────────────────
      // ── Previous cycle stats for 3-cycle comparison ─────────────────────
         // Get all completed cycles ordered by start date descending
-        // Skip the active cycle (endDate == null), take the 2 most recent closed ones
         List<Cycle> completedCycles = cycleRepo.findRecentCompletedCycles(userId, 10)
                 .stream()
-                .filter(c -> c.getStartDate() != null && c.getCycleLength() != null && c.getCycleLength() > 0)
+             // AFTER
+                .filter(c -> c.getStartDate() != null)
+                // Ensure sorted by startDate DESC — most recent first
+                .sorted((a, b) -> b.getStartDate().compareTo(a.getStartDate()))
                 .collect(Collectors.toList());
-            // Already ordered by startDate DESC from the repository query — no re-sort needed
+
+        System.out.println("🔍 completedCycles after sort:");
+        for (int i = 0; i < completedCycles.size(); i++) {
+            Cycle c = completedCycles.get(i);
+            System.out.println("  [" + i + "] id=" + c.getId()
+                + " start=" + c.getStartDate()
+                + " length=" + c.getCycleLength());
+        }
+
+        // index 0 = most recent completed (1 cycle ago) → previousCycle2
+        // index 1 = second most recent (2 cycles ago) → previousCycle1
+      
+
+        System.out.println("🔍 completedCycles count=" + completedCycles.size());
+        completedCycles.forEach(c -> System.out.println(
+            "  cycle id=" + c.getId() 
+            + " number=" + c.getCycleNumber()
+            + " start=" + c.getStartDate() 
+            + " end=" + c.getEndDate()
+            + " length=" + c.getCycleLength()));
 
         // previousCycle2 = most recent completed (1 cycle ago)
-        // previousCycle1 = second most recent completed (2 cycles ago)
+        // previousCycle1 = second most recent (2 cycles ago)
+        System.out.println("🔍 getInsights completedCycles size=" + completedCycles.size());
+        for (Cycle c : completedCycles) {
+            System.out.println("  → id=" + c.getId()
+                + " start=" + c.getStartDate()
+                + " end=" + c.getEndDate()
+                + " cycleLength=" + c.getCycleLength()
+                + " userId=" + c.getUserId());
+        }
         if (completedCycles.size() >= 1) {
-            resp.setPreviousCycle2(computeCycleStatsByCycle(completedCycles.get(0)));
+            CyclePreviousStats stats2 = computeCycleStatsByCycle(completedCycles.get(0));
+            System.out.println("🔍 previousCycle2 cycleLength=" + stats2.getCycleLength()
+                + " periodLength=" + stats2.getPeriodLength()
+                + " loggedDays=" + stats2.getLoggedDays());
+            resp.setPreviousCycle2(stats2);
         }
         if (completedCycles.size() >= 2) {
             resp.setPreviousCycle1(computeCycleStatsByCycle(completedCycles.get(1)));
@@ -530,35 +594,104 @@ public class CycleService {
         if (cycleStart != null && ChronoUnit.DAYS.between(cycleStart, today) > 90) {
             return buildDefaultState(today, defaultCycleLen, defaultPeriodLen);
         }
-        int periodLength     = activeCycle.getPeriodLength() != null
-                               ? activeCycle.getPeriodLength() : defaultPeriodLen;
-
-        // Fetch up to 3 completed cycles for average + variation
-        List<Cycle> recentCycles = cycleRepo.findRecentCompletedCycles(userId, 3);
-        List<Integer> recentLengths = recentCycles.stream()
-            .filter(c -> c.getCycleLength() != null && c.getCycleLength() > 0)
-            .map(Cycle::getCycleLength)
+     // Count period marks per cycle using all period marks for this user
+        // Group them by which cycle's date range they fall into
+     // Count period marks directly per cycle using date windows
+        List<Cycle> allUserCycles = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
+            .stream()
+            .filter(c -> c.getStartDate() != null)
+            .sorted(Comparator.comparing(Cycle::getStartDate))
             .collect(Collectors.toList());
 
-        int cycleLength = recentLengths.isEmpty()
-            ? (activeCycle.getCycleLength() != null ? activeCycle.getCycleLength() : defaultCycleLen)
-            : (int) Math.round(recentLengths.stream().mapToInt(i -> i).average().orElse(defaultCycleLen));
+        List<Integer> periodLengthsPerCycle = new ArrayList<>();
+        for (int ci = 0; ci < allUserCycles.size(); ci++) {
+            LocalDate wStart = allUserCycles.get(ci).getStartDate();
+            LocalDate wEnd = wStart.plusDays(15);
+            long count = markRepo.countPeriodMarksByUserIdAndDateRange(userId, wStart, wEnd);
+            System.out.println("  cycle " + ci + " window=" + wStart + "~" + wEnd + " count=" + count);
+            if (count > 0 && count <= 15) {
+                periodLengthsPerCycle.add((int) count);
+            }
+        }
 
-        // Cycle day (1-based)
+     // Raw period length from marks
+        int markedPeriodLength = periodLengthsPerCycle.isEmpty()
+            ? defaultPeriodLen
+            : periodLengthsPerCycle.get(periodLengthsPerCycle.size() - 1);
+
+        // For phase calculation: use the LARGER of marked days vs default
+        // This prevents showing Follicular when user is still marking period days
+        // e.g. if user marked 1 day so far but default is 5, use 5 for phase
+        // Once user marks more days than default, use actual count
+        int periodLength = Math.max(markedPeriodLength, defaultPeriodLen);
+
+        // For display in Your Pattern: show actual marked days (markedPeriodLength)
+        // pMin/pMax should reflect actual marks, not the padded value
+        int pMin = periodLengthsPerCycle.stream().mapToInt(i -> i).min().orElse(markedPeriodLength);
+        int pMax = periodLengthsPerCycle.stream().mapToInt(i -> i).max().orElse(markedPeriodLength);
+        System.out.println("🔍 markedPeriodLength=" + markedPeriodLength + " periodLength=" + periodLength + " pMin=" + pMin + " pMax=" + pMax + " cycles=" + periodLengthsPerCycle);
+
+     // Fetch completed cycles — compute actual length from start date gaps
+        // instead of stored cycleLength which may be wrong (default 28)
+     // Get ALL cycles for this user sorted by start date ASC
+        // including active cycle — to compute actual gaps between periods
+        List<Cycle> allCyclesSortedAsc = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
+            .stream()
+            .filter(c -> c.getStartDate() != null)
+            .sorted(Comparator.comparing(Cycle::getStartDate))
+            .collect(Collectors.toList());
+
+        System.out.println("🔍 allCyclesSortedAsc count=" + allCyclesSortedAsc.size());
+        allCyclesSortedAsc.forEach(c -> System.out.println(
+            "  id=" + c.getId()
+            + " start=" + c.getStartDate()
+            + " end=" + c.getEndDate()
+            + " length=" + c.getCycleLength()));
+
+        // Compute actual cycle lengths from gaps between consecutive start dates
+        // This is more accurate than stored cycleLength
+        List<Integer> recentLengths = new ArrayList<>();
+        for (int i = allCyclesSortedAsc.size() - 1; i >= 1; i--) {
+            Cycle current = allCyclesSortedAsc.get(i - 1);
+            Cycle next    = allCyclesSortedAsc.get(i);
+            int actualLen = (int) ChronoUnit.DAYS.between(
+                current.getStartDate(), next.getStartDate());
+            System.out.println("🔍 gap: " + current.getStartDate()
+                + " → " + next.getStartDate() + " = " + actualLen + " days");
+         // AFTER
+            if (actualLen >= 20 && actualLen <= 45) {
+                recentLengths.add(actualLen);
+                if (recentLengths.size() >= 3) break;
+            }
+        }
+        
+       
+
+        System.out.println("🔍 recentLengths=" + recentLengths + " for cycle length calc");
+
+        System.out.println("🔍 recentLengths=" + recentLengths + " for variation calc");
+
+        int cycleLength = recentLengths.isEmpty()
+        	    ? (activeCycle.getCycleLength() != null ? activeCycle.getCycleLength() : defaultCycleLen)
+        	    : recentLengths.get(0); // most recent gap = best estimate for current cycle length
+        // Cycle day (1-based) from actual cycle start date
         int cycleDay = (int) ChronoUnit.DAYS.between(cycleStart, today) + 1;
-        cycleDay = Math.max(1, Math.min(cycleDay, cycleLength));
+        cycleDay = Math.max(1, cycleDay);
 
         String phase    = computePhase(cycleDay, periodLength, cycleLength);
         String phaseKey = phaseToKey(phase);
 
-        // Days until next period
-        int daysUntilNext    = cycleLength - cycleDay + 1;
-        LocalDate nextPeriod = today.plusDays(daysUntilNext);
+     // nextPeriod = cycleStart + cycleLength (first day of next cycle)
+        // This matches the end date shown in Insights: cycleStart + cycleLength - 1
+     // nextPeriod = cycleStart + cycleLength
+        // e.g. June 9 + 31 = July 10 (first day of next cycle)
+        // endDate of current cycle = July 9 (day 31)
+        LocalDate nextPeriod = cycleStart.plusDays(cycleLength);
+        int daysUntilNext = (int) ChronoUnit.DAYS.between(today, nextPeriod);
+        daysUntilNext = Math.max(1, daysUntilNext);
+        System.out.println("🔍 cycleStart=" + cycleStart + " cycleLength=" + cycleLength + " nextPeriod=" + nextPeriod + " daysUntilNext=" + daysUntilNext);
 
-        // Logged days this cycle
         long loggedDays = logRepo.countByCycleId(activeCycle.getId());
-
-        // Stats
         List<DailyLog> cycleLogs = logRepo.findByCycleIdOrderByLogDateAsc(activeCycle.getId());
 
         CycleStateResponse resp = new CycleStateResponse();
@@ -566,7 +699,8 @@ public class CycleService {
         resp.setCycleNumber(activeCycle.getCycleNumber());
         resp.setCycleDay(cycleDay);
         resp.setCycleLength(cycleLength);
-        resp.setPeriodLength(periodLength);
+        resp.setPeriodLength(markedPeriodLength); // show actual marked days in UI
+        // periodLength (padded) is only used for phase computation above
         resp.setPhase(phase);
         resp.setPhaseKey(phaseKey);
         resp.setCycleStartDate(cycleStart.toString());
@@ -577,23 +711,25 @@ public class CycleService {
         resp.setMoodCounts(computeMoodCounts(cycleLogs));
         resp.setDischargeCounts(computeDischargeCounts(cycleLogs));
         resp.setSymptomCounts(computeSymptomCounts(cycleLogs));
+        
+     // Actual days elapsed in current cycle
+        int actualCycleLen = (int) ChronoUnit.DAYS.between(cycleStart, today) + 1;
+        resp.setActualCycleLength(Math.max(actualCycleLen, 1));
+        resp.setPeriodLengthMin(pMin);
+        resp.setPeriodLengthMax(pMax);
+        resp.setPeriodLengthMin(pMin);
+        resp.setPeriodLengthMax(pMax);
 
-     // Pattern data — avg cycle length, variation, cycle count
         resp.setPatternCycleCount(recentLengths.size());
-
         if (recentLengths.size() >= 1) {
-            // Average across all completed cycles
             int avg = (int) Math.round(
                 recentLengths.stream().mapToInt(i -> i).average().orElse(defaultCycleLen));
             resp.setAvgCycleLength(avg);
         } else {
             resp.setAvgCycleLength(0);
         }
-
         if (recentLengths.size() >= 2) {
-            // mostRecent = get(0) because query is now ORDER BY startDate DESC
             int mostRecent = recentLengths.get(0);
-            // Average of the OTHER cycles (excluding most recent) for fair comparison
             List<Integer> others = recentLengths.subList(1, recentLengths.size());
             double avgOthers = others.stream().mapToInt(i -> i).average().orElse(mostRecent);
             resp.setCycleVariation(mostRecent - (int) Math.round(avgOthers));
@@ -601,6 +737,84 @@ public class CycleService {
             resp.setCycleVariation(0);
         }
 
+     // ── 7-day trend maps ──────────────────────────────────────────
+        try {
+            LocalDate sevenDaysAgo = LocalDate.now().minusDays(6);
+            List<DailyLog> recentLogs = logRepo.findRecentLogs(userId, sevenDaysAgo);
+
+            Map<String, Integer> energyByDay = new LinkedHashMap<>();
+            Map<String, Integer> sleepByDay  = new LinkedHashMap<>();
+            Map<String, Integer> stressByDay = new LinkedHashMap<>();
+
+            Map<String, Integer> energyScoreMap = new HashMap<>();
+            energyScoreMap.put("depleted", 1);
+            energyScoreMap.put("low",      2);
+            energyScoreMap.put("steady",   3);
+            energyScoreMap.put("flowing",  4);
+            energyScoreMap.put("charged",  5);
+
+            Map<String, Integer> stressScoreMap = new HashMap<>();
+            stressScoreMap.put("radiant",   1);
+            stressScoreMap.put("happy",     1);
+            stressScoreMap.put("calm",      2);
+            stressScoreMap.put("sensitive", 3);
+            stressScoreMap.put("anxious",   5);
+            stressScoreMap.put("irritable", 4);
+            stressScoreMap.put("low",       3);
+            stressScoreMap.put("tired",     4);
+
+            for (DailyLog log : recentLogs) {
+                String dateKey = log.getLogDate().toString();
+
+                // Energy score
+                if (log.getEnergy() != null) {
+                    int score = energyScoreMap.getOrDefault(log.getEnergy().toLowerCase(), 0);
+                    if (score > 0) energyByDay.put(dateKey, score);
+                }
+
+                // Sleep score — from sleep zone chips
+                // More sleep symptoms = worse sleep = lower score
+                boolean hasSleepZone = log.getBodyZones().stream()
+                    .anyMatch(z -> "sleep".equals(z.getZoneId())
+                        && z.getChips() != null && !z.getChips().isEmpty());
+                if (hasSleepZone) {
+                    // Sleep zone selected = user has sleep symptoms = poor sleep
+                    // More chips = worse sleep = LOWER score
+                    int sleepChipCount = log.getBodyZones().stream()
+                        .filter(z -> "sleep".equals(z.getZoneId()) && z.getChips() != null)
+                        .mapToInt(z -> z.getChips().size())
+                        .sum();
+                    // 1 chip = score 4, 2 chips = score 3, 3 chips = score 2, 4+ = score 1
+                    int sleepScore = Math.max(1, 5 - sleepChipCount);
+                    sleepByDay.put(dateKey, sleepScore);
+                } else if (log.getMood() != null || log.getEnergy() != null) {
+                    // User logged but no sleep complaints = good sleep = score 5
+                    sleepByDay.put(dateKey, 5);
+                }
+
+                // Stress score — derived from mood
+                if (log.getMood() != null) {
+                    int score = stressScoreMap.getOrDefault(log.getMood().toLowerCase(), 0);
+                    if (score > 0) stressByDay.put(dateKey, score);
+                }
+            }
+
+            resp.setEnergyByDay(energyByDay);
+            resp.setSleepByDay(sleepByDay);
+            resp.setStressByDay(stressByDay);
+        } catch (Exception e) {
+            System.out.println("⚠️ 7-day trend map error: " + e.getMessage());
+            resp.setEnergyByDay(new LinkedHashMap<>());
+            resp.setSleepByDay(new LinkedHashMap<>());
+            resp.setStressByDay(new LinkedHashMap<>());
+        }
+        
+     // Add assessment results for CI type display
+        assessRepo.findByUserIdAndAssessmentType(userId, "PCOS")
+            .ifPresent(a -> resp.setPcosResult(a.getResultType()));
+        assessRepo.findByUserIdAndAssessmentType(userId, "PRAKRITI")
+            .ifPresent(a -> resp.setPrakritiResult(a.getResultType()));
+        
         return resp;
     }
 
@@ -624,11 +838,19 @@ public class CycleService {
             .distinct()
             .collect(Collectors.toList());
 
-        // Process only the earliest date per batch — the 5 consecutive days
-        // all share the same cycle, so we only need to call handlePeriodMark once
-        // with the first day of that period
         if (!periodDates.isEmpty()) {
             handlePeriodMark(userId, periodDates.get(0));
+            // Update active cycle's period length after handling
+            cycleRepo.findActiveCycleByUserId(userId).ifPresent(c -> {
+                if (c.getStartDate() != null) {
+                    long periodCount = markRepo.countPeriodMarksByUserIdAndDateRange(
+                        userId, c.getStartDate(), c.getStartDate().plusDays(15));
+                    if (periodCount > 0) {
+                        c.setPeriodLength((int) periodCount);
+                        cycleRepo.save(c);
+                    }
+                }
+            });
         }
 
      
@@ -638,19 +860,71 @@ public class CycleService {
             int       markType = entry.getValue();
 
             if (markType == 0) {
+                // Delete the mark first
                 markRepo.deleteByUserIdAndMarkDate(userId, date);
-                // If no period marks remain, clear the active cycle's start date
-                // so the user can re-mark freely
-                boolean anyPeriodLeft = !markRepo.findAllPeriodMarksByUserId(userId).isEmpty();
-                if (!anyPeriodLeft) {
-                    cycleRepo.findActiveCycleByUserId(userId).ifPresent(c -> {
-                        c.setStartDate(null);
-                        cycleRepo.save(c);
-                    });
+                markRepo.flush();
+
+                // Check remaining period marks for active cycle
+                Optional<Cycle> activeCycleOpt = cycleRepo.findActiveCycleByUserId(userId);
+                if (activeCycleOpt.isPresent()) {
+                    Cycle activeCycle = activeCycleOpt.get();
+                    if (activeCycle.getStartDate() != null) {
+                        long remainingCount = markRepo.countPeriodMarksByUserIdAndDateRange(
+                            userId,
+                            activeCycle.getStartDate().minusDays(5),
+                            activeCycle.getStartDate().plusDays(20)
+                        );
+
+                        if (remainingCount == 0) {
+                            activeCycle.setStartDate(null);
+                            activeCycle.setPeriodLength(5);
+                            cycleRepo.save(activeCycle);
+                            cycleRepo.flush();
+                        } else {
+                            List<CycleDayMark> remaining = markRepo.findByUserIdAndDateRange(
+                                userId,
+                                activeCycle.getStartDate().minusDays(5),
+                                activeCycle.getStartDate().plusDays(20)
+                            );
+                            LocalDate earliest = remaining.stream()
+                                .filter(m -> m.getMarkType() == 1)
+                                .map(CycleDayMark::getMarkDate)
+                                .min(LocalDate::compareTo)
+                                .orElse(activeCycle.getStartDate());
+                            activeCycle.setStartDate(earliest);
+                            activeCycle.setPeriodLength((int) remainingCount);
+                            cycleRepo.save(activeCycle);
+                            cycleRepo.flush();
+                        }
+                    }
                 }
+
+                // ── NEW: Clean up historical cycles that have no period marks ──
+                // When user clears past months marks, remove completed cycles
+                // that no longer have any marks so cycle length recalculates correctly
+                List<Cycle> completedCycles = cycleRepo.findRecentCompletedCycles(userId, 10);
+                for (Cycle completedCycle : completedCycles) {
+                    if (completedCycle.getStartDate() == null) continue;
+
+                    // Count period marks in this cycle's window
+                    long marksInCycle = markRepo.countPeriodMarksByUserIdAndDateRange(
+                        userId,
+                        completedCycle.getStartDate().minusDays(5),
+                        completedCycle.getStartDate().plusDays(20)
+                    );
+
+                    if (marksInCycle == 0) {
+                        // No marks left for this cycle — delete it
+                        System.out.println("🗑️ Deleting orphaned cycle id="
+                            + completedCycle.getId()
+                            + " start=" + completedCycle.getStartDate());
+                        cycleRepo.delete(completedCycle);
+                    }
+                }
+                cycleRepo.flush();
+
                 continue;
             }
-
             // Only resolve/create a cycle for period marks (type 1)
             // Non-period marks (spotting, discharge, bleeding, other)
             // should NOT create a cycle if one doesn't exist yet
@@ -689,10 +963,25 @@ public class CycleService {
         // Resolve cycleId — use provided or look up active cycle
         Long cycleId = req.getCycleId();
         if (cycleId == null) {
-            cycleId = cycleRepo.findActiveCycleByUserId(userId)
-                .map(Cycle::getId)
-                .orElseThrow(() -> new RuntimeException(
-                    "No active cycle found for user. Please mark a period start first."));
+            // Try to find active cycle
+            Optional<Cycle> activeCycleOpt = cycleRepo.findActiveCycleByUserId(userId);
+            if (activeCycleOpt.isPresent()) {
+                cycleId = activeCycleOpt.get().getId();
+            } else {
+                // No active cycle — create one with today as start date
+                // This allows logging even before marking a period
+                LocalDate today = LocalDate.now();
+                Cycle newCycle = new Cycle();
+                newCycle.setUserId(userId);
+                newCycle.setCycleNumber(cycleRepo.findMaxCycleNumberByUserId(userId)
+                    .map(n -> n + 1).orElse(1));
+                newCycle.setStartDate(null); // no period marked yet
+                CycleSettings settings = settingsRepo.findByUserId(userId).orElse(null);
+                newCycle.setCycleLength(settings != null ? settings.getCycleLength() : 28);
+                newCycle.setPeriodLength(settings != null ? settings.getPeriodLength() : 5);
+                Cycle saved = cycleRepo.save(newCycle);
+                cycleId = saved.getId();
+            }
         }
 
         final Long finalCycleId = cycleId;
@@ -775,6 +1064,7 @@ public class CycleService {
                 // Past period — save as historical, don't touch active cycle
                 createHistoricalCycle(userId, periodDate);
             } else {
+                // No start date yet — set it to this period date
                 activeCycle.setStartDate(periodDate);
                 cycleRepo.save(activeCycle);
             }
@@ -800,9 +1090,14 @@ public class CycleService {
             // Recalculate all historical cycle lengths with new reference
             recalculateHistoricalCycleLengths(userId);
         } else {
-            // Same cycle window — user correcting the start date
-            activeCycle.setStartDate(periodDate);
-            cycleRepo.save(activeCycle);
+            // Same cycle window — only move start date EARLIER, never later
+            // Marking day 2, 3, 4 of period should NOT reset the cycle start
+            if (periodDate.isBefore(activeCycle.getStartDate())) {
+                activeCycle.setStartDate(periodDate);
+                cycleRepo.save(activeCycle);
+            }
+            // If marking a later date (e.g. day 2 of period),
+            // just save the mark without changing the cycle start
         }
     }
 
@@ -854,7 +1149,9 @@ public class CycleService {
         Optional<Cycle> existing = cycleRepo.findCycleForDate(userId, startDate);
         if (existing.isPresent()) {
             Cycle c = existing.get();
-            if (!startDate.equals(c.getStartDate())) {
+            // Only move start date EARLIER, never later
+            // This prevents marking day 2 from overwriting day 1 as start
+            if (c.getStartDate() == null || startDate.isBefore(c.getStartDate())) {
                 c.setStartDate(startDate);
                 cycleRepo.save(c);
             }
@@ -908,7 +1205,6 @@ public class CycleService {
      * lengths based on actual gaps between consecutive period start dates.
      */
     private void recalculateHistoricalCycleLengths(Long userId) {
-        // Get all cycles ordered by start date ascending
         List<Cycle> allCycles = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
             .stream()
             .filter(c -> c.getStartDate() != null)
@@ -919,14 +1215,14 @@ public class CycleService {
             Cycle current = allCycles.get(i);
             Cycle next    = allCycles.get(i + 1);
 
-            if (current.getEndDate() == null) continue; // skip active cycle
-
             int daysBetween = (int) ChronoUnit.DAYS.between(
                 current.getStartDate(), next.getStartDate());
 
             if (daysBetween >= 20 && daysBetween <= 45) {
                 current.setCycleLength(daysBetween);
-                current.setEndDate(next.getStartDate().minusDays(1));
+                if (current.getEndDate() != null) {
+                    current.setEndDate(next.getStartDate().minusDays(1));
+                }
                 cycleRepo.save(current);
             }
         }
@@ -971,9 +1267,35 @@ public class CycleService {
     // ═════════════════════════════════════════════════════════════════════════
 
     private String computePhase(int cycleDay, int periodLength, int cycleLength) {
-        int menstrualEnd  = periodLength;
-        int follicularEnd = cycleLength / 2 - 2;
-        int ovulationEnd  = cycleLength / 2 + 1;
+        // Based on clinical table provided:
+        // Menstrual:  Always Days 1–5
+        // Follicular: Days 6 to (cycleLength - 15)
+        // Ovulation:  Days (cycleLength - 14) to (cycleLength - 12)
+        // Luteal:     Days (cycleLength - 11) to cycleLength
+        //
+        // Examples:
+        // 28-day: Follicular 6–13, Ovulation 14–16, Luteal 17–28
+        // 31-day: Follicular 6–16, Ovulation 17–19, Luteal 20–31
+        // 33-day: Follicular 6–18, Ovulation 19–21, Luteal 22–33
+
+        int menstrualEnd  = 5;
+        int follicularEnd = cycleLength - 15;
+        int ovulationEnd  = cycleLength - 12;
+
+        // Safety for very short cycles (below 25 days)
+        if (follicularEnd <= menstrualEnd) {
+            follicularEnd = menstrualEnd + 1;
+        }
+        if (ovulationEnd <= follicularEnd) {
+            ovulationEnd = follicularEnd + 3;
+        }
+
+        System.out.println("🔍 computePhase: cycleDay=" + cycleDay
+            + " cycleLength=" + cycleLength
+            + " menstrualEnd=" + menstrualEnd
+            + " follicularEnd=" + follicularEnd
+            + " ovulationEnd=" + ovulationEnd);
+
         if (cycleDay <= menstrualEnd)  return "Menstrual";
         if (cycleDay <= follicularEnd) return "Follicular";
         if (cycleDay <= ovulationEnd)  return "Ovulation";
@@ -1074,9 +1396,34 @@ public class CycleService {
             }
         }
 
+     // Use actual cycle length from database (already fixed by SQL cleanup)
+        int storedLen = cycle.getCycleLength() != null ? cycle.getCycleLength() : 0;
+
+     // Count actual period marks for this cycle instead of using stored default
+     // Count actual period marks for this cycle
+        // Search from 5 days BEFORE start date to catch marks saved before
+        // the cycle start was corrected via SQL
+        LocalDate searchFrom = cycle.getStartDate().minusDays(5);
+        LocalDate searchTo = cycle.getStartDate().plusDays(15);
+        long actualPeriodMarks = markRepo.countPeriodMarksByUserIdAndDateRange(
+                cycle.getUserId(),
+                searchFrom,
+                searchTo
+            );
+            System.out.println("🔍 cycle id=" + cycle.getId()
+                + " start=" + cycle.getStartDate()
+                + " searchFrom=" + searchFrom
+                + " searchTo=" + searchTo
+                + " periodMarks=" + actualPeriodMarks);
+            // Use actual marks count — if 0 marks found, return 0 not default 5
+            // This prevents showing "5d" when user never logged period days
+            int actualPeriodLength = actualPeriodMarks > 0 && actualPeriodMarks <= 15
+                ? (int) actualPeriodMarks
+                : 0; // 0 means no data — frontend will show "—"
+
         CyclePreviousStats stats = new CyclePreviousStats();
-        stats.setCycleLength(cycle.getCycleLength()  != null ? cycle.getCycleLength()  : 28);
-        stats.setPeriodLength(cycle.getPeriodLength() != null ? cycle.getPeriodLength() : 5);
+        stats.setCycleLength(storedLen);
+        stats.setPeriodLength(actualPeriodLength);
         stats.setAvgMood(moods.isEmpty() ? 0
             : moods.stream().mapToInt(i -> i).sum() / moods.size());
         stats.setAvgEnergy(energies.isEmpty() ? 0
@@ -1136,14 +1483,14 @@ public class CycleService {
 
     private CycleStateResponse buildDefaultState(LocalDate today, int cycleLen, int periodLen) {
         CycleStateResponse resp = new CycleStateResponse();
-        resp.setCycleId(0);        // 0 = no cycle started
-        resp.setCycleNumber(0);    // 0 = no cycle started
-        resp.setCycleDay(0);       // 0 = not tracking yet
+        resp.setCycleId(0);
+        resp.setCycleNumber(0);
+        resp.setCycleDay(0);
         resp.setCycleLength(cycleLen);
         resp.setPeriodLength(periodLen);
         resp.setPhase("None");
         resp.setPhaseKey("none");
-        resp.setCycleStartDate("");  // empty = not started
+        resp.setCycleStartDate("");
         resp.setNextPeriodDate("");
         resp.setDaysUntilNext(0);
         resp.setLoggedDays(0);
@@ -1151,6 +1498,15 @@ public class CycleService {
         resp.setMoodCounts(new LinkedHashMap<>());
         resp.setDischargeCounts(new LinkedHashMap<>());
         resp.setSymptomCounts(new LinkedHashMap<>());
+        resp.setPeriodLengthMin(0);
+        resp.setPeriodLengthMax(0);
+        resp.setAvgCycleLength(0);
+        resp.setPatternCycleCount(0);
+        resp.setCycleVariation(0);
+        resp.setActualCycleLength(0);
+        resp.setEnergyByDay(new LinkedHashMap<>());
+        resp.setSleepByDay(new LinkedHashMap<>());
+        resp.setStressByDay(new LinkedHashMap<>());
         return resp;
     }
 }

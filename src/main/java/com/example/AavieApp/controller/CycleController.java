@@ -153,6 +153,11 @@ public class CycleController {
     // ─────────────────────────────────────────────────────────────────────────
     @GetMapping("/health")
     public ResponseEntity<?> health() {
-        return ResponseEntity.ok(Map.of("status", "ok", "service", "Aavie Cycle API v2"));
+        return ResponseEntity.ok(Map.of(
+            "status", "ok",
+            "service", "Aavie Cycle API v2",
+            "version", "periodLengthMin-fix-v3",
+            "time", java.time.LocalDateTime.now().toString()
+        ));
     }
 }

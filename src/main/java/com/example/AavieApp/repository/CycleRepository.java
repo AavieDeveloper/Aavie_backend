@@ -18,16 +18,32 @@ public interface CycleRepository extends JpaRepository<Cycle, Long> {
  
     /** The current active cycle — end_date is null */
     @Query("SELECT c FROM Cycle c WHERE c.userId = :userId AND c.endDate IS NULL ORDER BY c.cycleNumber DESC")
-    Optional<Cycle> findActiveCycleByUserId(Long userId);
+    List<Cycle> findActiveCyclesInternal(@Param("userId") Long userId);
+
+    default Optional<Cycle> findActiveCycleByUserId(Long userId) {
+        List<Cycle> cycles = findActiveCyclesInternal(userId);
+        if (cycles.isEmpty()) return Optional.empty();
+        return Optional.of(cycles.get(0));
+    }
  
     /** Most recent N cycles — for comparison features */
     @Query("SELECT c FROM Cycle c WHERE c.userId = :userId ORDER BY c.cycleNumber DESC")
     List<Cycle> findRecentCyclesByUserId(Long userId);
  
-    /** Find cycle that contains a given date */
     @Query("SELECT c FROM Cycle c WHERE c.userId = :userId " +
-           "AND c.startDate <= :date AND (c.endDate IS NULL OR c.endDate >= :date)")
-    Optional<Cycle> findCycleForDate(Long userId, LocalDate date);
+            "AND c.startDate <= :date AND (c.endDate IS NULL OR c.endDate >= :date) " +
+            "ORDER BY c.startDate DESC")
+     List<Cycle> findCyclesForDateInternal(@Param("userId") Long userId, @Param("date") LocalDate date);
+
+     default Optional<Cycle> findCycleForDate(Long userId, LocalDate date) {
+         List<Cycle> cycles = findCyclesForDateInternal(userId, date);
+         if (cycles.isEmpty()) return Optional.empty();
+         // Prefer closed cycle (endDate not null) over active cycle for past dates
+         return cycles.stream()
+             .filter(c -> c.getEndDate() != null)
+             .findFirst()
+             .or(() -> Optional.of(cycles.get(0)));
+     }
     
     Optional<Cycle> findByUserIdAndCycleNumber(Long userId, Integer cycleNumber);
  

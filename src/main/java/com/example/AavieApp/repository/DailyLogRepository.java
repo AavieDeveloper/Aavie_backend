@@ -3,6 +3,7 @@ package com.example.AavieApp.repository;
 import com.example.AavieApp.model.DailyLog;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
  
 import java.time.LocalDate;
@@ -32,5 +33,8 @@ public interface DailyLogRepository extends JpaRepository<DailyLog, Long> {
  
     /** Most recent log for a user — used for streak */
     Optional<DailyLog> findTopByUserIdOrderByLogDateDesc(Long userId);
+    
+    @Query("SELECT d FROM DailyLog d WHERE d.userId = :userId AND d.logDate >= :fromDate ORDER BY d.logDate ASC")
+    List<DailyLog> findRecentLogs(@Param("userId") Long userId, @Param("fromDate") LocalDate fromDate);
 }
  
