@@ -683,10 +683,11 @@ public class CycleService {
             + " start=" + c.getStartDate()
             + " end=" + c.getEndDate()
             + " length=" + c.getCycleLength()));
-
-        // Compute actual cycle lengths from gaps between consecutive start dates
-        // This is more accurate than stored cycleLength
+        
+        
         List<Integer> recentLengths = new ArrayList<>();
+
+        // Compute gaps from newest to oldest — include active cycle as endpoint
         for (int i = allCyclesSortedAsc.size() - 1; i >= 1; i--) {
             Cycle current = allCyclesSortedAsc.get(i - 1);
             Cycle next    = allCyclesSortedAsc.get(i);
@@ -694,16 +695,45 @@ public class CycleService {
                 current.getStartDate(), next.getStartDate());
             System.out.println("🔍 gap: " + current.getStartDate()
                 + " → " + next.getStartDate() + " = " + actualLen + " days");
-         // AFTER
             if (actualLen >= 20 && actualLen <= 45) {
                 recentLengths.add(actualLen);
                 if (recentLengths.size() >= 3) break;
             }
         }
-        
+
+        System.out.println("🔍 recentLengths after primary=" + recentLengths);
+
+        // Fallback — if gaps not found, scan forward (oldest to newest)
+        if (recentLengths.size() < 2 && allCyclesSortedAsc.size() >= 2) {
+            List<Integer> forwardGaps = new ArrayList<>();
+            for (int i = 1; i < allCyclesSortedAsc.size(); i++) {
+                Cycle prev = allCyclesSortedAsc.get(i - 1);
+                Cycle curr = allCyclesSortedAsc.get(i);
+                int gap = (int) ChronoUnit.DAYS.between(
+                    prev.getStartDate(), curr.getStartDate());
+                System.out.println("🔍 forward gap: " + prev.getStartDate()
+                    + " → " + curr.getStartDate() + " = " + gap + " days");
+                if (gap >= 20 && gap <= 45) {
+                    forwardGaps.add(gap);
+                }
+            }
+            if (forwardGaps.size() > recentLengths.size()) {
+                // Use forward gaps, reverse so index 0 = most recent
+                Collections.reverse(forwardGaps);
+                recentLengths = forwardGaps.stream()
+                    .limit(3)
+                    .collect(Collectors.toList());
+                System.out.println("🔍 recentLengths from fallback=" + recentLengths);
+            }
+        }
        
 
         System.out.println("🔍 recentLengths=" + recentLengths + " for cycle length calc");
+        
+        System.out.println("🔍 allCyclesSortedAsc size=" + allCyclesSortedAsc.size());
+        allCyclesSortedAsc.forEach(c -> System.out.println(
+            "  → id=" + c.getId() + " start=" + c.getStartDate() + " end=" + c.getEndDate()));
+        System.out.println("🔍 recentLengths=" + recentLengths + " size=" + recentLengths.size());
 
         System.out.println("🔍 recentLengths=" + recentLengths + " for variation calc");
 
@@ -756,6 +786,7 @@ public class CycleService {
         resp.setPeriodLengthMin(pMin);
         resp.setPeriodLengthMax(pMax);
 
+     // patternCycleCount = number of gaps we found = number of completed cycles
         resp.setPatternCycleCount(recentLengths.size());
         if (recentLengths.size() >= 1) {
             int avg = (int) Math.round(
@@ -790,14 +821,14 @@ public class CycleService {
             energyScoreMap.put("charged",  5);
 
             Map<String, Integer> stressScoreMap = new HashMap<>();
-            stressScoreMap.put("radiant",   1);
-            stressScoreMap.put("happy",     1);
-            stressScoreMap.put("calm",      2);
-            stressScoreMap.put("sensitive", 3);
-            stressScoreMap.put("anxious",   5);
-            stressScoreMap.put("irritable", 4);
-            stressScoreMap.put("low",       3);
-            stressScoreMap.put("tired",     4);
+            stressScoreMap.put("radiant",   1); // very low stress
+            stressScoreMap.put("happy",     1); // very low stress
+            stressScoreMap.put("calm",      2); // low stress
+            stressScoreMap.put("sensitive", 3); // moderate stress
+            stressScoreMap.put("low",       3); // moderate stress
+            stressScoreMap.put("tired",     4); // high stress
+            stressScoreMap.put("irritable", 4); // high stress
+            stressScoreMap.put("anxious",   5); // very high stress
 
             for (DailyLog log : recentLogs) {
                 String dateKey = log.getLogDate().toString();
@@ -813,20 +844,40 @@ public class CycleService {
                 boolean hasSleepZone = log.getBodyZones().stream()
                     .anyMatch(z -> "sleep".equals(z.getZoneId())
                         && z.getChips() != null && !z.getChips().isEmpty());
-                if (hasSleepZone) {
-                    // Sleep zone selected = user has sleep symptoms = poor sleep
-                    // More chips = worse sleep = LOWER score
-                    int sleepChipCount = log.getBodyZones().stream()
+                List<String> sleepChips = log.getBodyZones().stream()
                         .filter(z -> "sleep".equals(z.getZoneId()) && z.getChips() != null)
-                        .mapToInt(z -> z.getChips().size())
-                        .sum();
-                    // 1 chip = score 4, 2 chips = score 3, 3 chips = score 2, 4+ = score 1
-                    int sleepScore = Math.max(1, 5 - sleepChipCount);
-                    sleepByDay.put(dateKey, sleepScore);
-                } else if (log.getMood() != null || log.getEnergy() != null) {
-                    // User logged but no sleep complaints = good sleep = score 5
-                    sleepByDay.put(dateKey, 5);
-                }
+                        .flatMap(z -> z.getChips().stream())
+                        .collect(Collectors.toList());
+
+                    if (!sleepChips.isEmpty()) {
+                        // Severity weights — serious symptoms count more
+                        Map<String, Integer> sleepSeverity = new HashMap<>();
+                        sleepSeverity.put("poor sleep",        3);
+                        sleepSeverity.put("can't fall asleep", 3);
+                        sleepSeverity.put("early waking",      2);
+                        sleepSeverity.put("restless",          2);
+                        sleepSeverity.put("vivid dreams",      1);
+
+                        int totalSeverity = sleepChips.stream()
+                            .mapToInt(chip ->
+                                sleepSeverity.getOrDefault(chip.toLowerCase().trim(), 1))
+                            .sum();
+
+                        // severity 1 = score 4, 2-3 = score 3, 4-5 = score 2, 6+ = score 1
+                        int sleepScore;
+                        if      (totalSeverity >= 6) sleepScore = 1;
+                        else if (totalSeverity >= 4) sleepScore = 2;
+                        else if (totalSeverity >= 2) sleepScore = 3;
+                        else                         sleepScore = 4;
+
+                        sleepByDay.put(dateKey, sleepScore);
+                        System.out.println("🔍 sleep chips=" + sleepChips
+                            + " severity=" + totalSeverity + " score=" + sleepScore
+                            + " date=" + dateKey);
+                    } else if (log.getMood() != null || log.getEnergy() != null) {
+                        // Logged but no sleep complaints = good sleep = score 5
+                        sleepByDay.put(dateKey, 5);
+                    }
 
                 // Stress score — derived from mood
                 if (log.getMood() != null) {
@@ -1098,13 +1149,17 @@ public class CycleService {
 
         if (activeCycle.getStartDate() == null) {
             // Active cycle exists but has no start date yet
-            if (periodDate.isBefore(today.minusDays(20))) {
+            if (periodDate.isBefore(today.minusDays(45))) {
                 // Past period — save as historical, don't touch active cycle
                 createHistoricalCycle(userId, periodDate);
+                // Always recalculate after adding historical cycle
+                recalculateHistoricalCycleLengths(userId);
             } else {
                 // No start date yet — set it to this period date
                 activeCycle.setStartDate(periodDate);
                 cycleRepo.save(activeCycle);
+                // Also recalculate historical cycles to update gaps
+                recalculateHistoricalCycleLengths(userId);
             }
             return;
         }
@@ -1114,12 +1169,14 @@ public class CycleService {
 
         if (daysFromToday > 20) {
             // This is a past period mark — save as historical closed cycle
+            // This is a past period mark — save as historical closed cycle
+            // This is a past period mark — save as historical closed cycle
             // Do NOT disturb the current active cycle
             createHistoricalCycle(userId, periodDate);
             // Recalculate lengths for all historical cycles now that
             // we may have a new reference point
             recalculateHistoricalCycleLengths(userId);
-        } else if (daysSinceStart >= 21) {
+        } else if (daysSinceStart >= 18) {
             // New period that is recent — close current, open next
             activeCycle.setEndDate(periodDate.minusDays(1));
             activeCycle.setCycleLength((int) daysSinceStart);
