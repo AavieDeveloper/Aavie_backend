@@ -585,6 +585,42 @@ public class CycleService {
         Cycle activeCycle = cycleRepo.findActiveCycleByUserId(userId).orElse(null);
 
         if (activeCycle == null || activeCycle.getStartDate() == null) {
+            // Even without active cycle, try to compute pattern from historical cycles
+            List<Cycle> historicalOnly = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
+                .stream()
+                .filter(c -> c.getStartDate() != null)
+                .sorted(Comparator.comparing(Cycle::getStartDate))
+                .collect(Collectors.toList());
+
+            if (historicalOnly.size() >= 2) {
+                // Build a partial state showing pattern data even without active cycle
+                CycleStateResponse partial = buildDefaultState(today, defaultCycleLen, defaultPeriodLen);
+                List<Integer> gaps = new ArrayList<>();
+                for (int i = historicalOnly.size() - 1; i >= 1; i--) {
+                    int gap = (int) ChronoUnit.DAYS.between(
+                        historicalOnly.get(i-1).getStartDate(),
+                        historicalOnly.get(i).getStartDate());
+                    if (gap >= 20 && gap <= 45) {
+                        gaps.add(gap);
+                        if (gaps.size() >= 3) break;
+                    }
+                }
+                if (!gaps.isEmpty()) {
+                    int avg = (int) Math.round(gaps.stream().mapToInt(i->i).average().orElse(defaultCycleLen));
+                    partial.setAvgCycleLength(avg);
+                    partial.setPatternCycleCount(gaps.size());
+                    if (gaps.size() >= 2) {
+                        int mostRecent = gaps.get(0);
+                        double avgOthers = gaps.subList(1, gaps.size()).stream().mapToInt(i->i).average().orElse(mostRecent);
+                        partial.setCycleVariation(mostRecent - (int) Math.round(avgOthers));
+                    }
+                }
+                assessRepo.findByUserIdAndAssessmentType(userId, "PCOS")
+                    .ifPresent(a -> partial.setPcosResult(a.getResultType()));
+                assessRepo.findByUserIdAndAssessmentType(userId, "PRAKRITI")
+                    .ifPresent(a -> partial.setPrakritiResult(a.getResultType()));
+                return partial;
+            }
             return buildDefaultState(today, defaultCycleLen, defaultPeriodLen);
         }
 
@@ -922,6 +958,8 @@ public class CycleService {
                     }
                 }
                 cycleRepo.flush();
+             // Recalculate all remaining cycles after deletion
+                recalculateHistoricalCycleLengths(userId);
 
                 continue;
             }
@@ -1220,9 +1258,7 @@ public class CycleService {
 
             if (daysBetween >= 20 && daysBetween <= 45) {
                 current.setCycleLength(daysBetween);
-                if (current.getEndDate() != null) {
-                    current.setEndDate(next.getStartDate().minusDays(1));
-                }
+                current.setEndDate(next.getStartDate().minusDays(1));
                 cycleRepo.save(current);
             }
         }
