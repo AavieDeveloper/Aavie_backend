@@ -1136,7 +1136,7 @@ public class CycleService {
         Optional<Cycle> activeCycleOpt = cycleRepo.findActiveCycleByUserId(userId);
 
         if (activeCycleOpt.isEmpty()) {
-            if (periodDate.isBefore(today.minusDays(20))) {
+            if (periodDate.isBefore(today.minusDays(45))) {
                 createHistoricalCycle(userId, periodDate);
                 recalculateHistoricalCycleLengths(userId);
             } else {
