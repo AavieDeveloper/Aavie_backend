@@ -105,6 +105,7 @@ public class CycleService {
         private int avgCycleLength;
         private int patternCycleCount;
         private int cycleVariation;
+        private int periodVariation;
         private int actualCycleLength;
         private int periodLengthMin;
         private int periodLengthMax;
@@ -152,6 +153,9 @@ public class CycleService {
         public void setPatternCycleCount(int v)   { this.patternCycleCount = v; }
         public int  getCycleVariation()           { return cycleVariation; }
         public void setCycleVariation(int v)      { this.cycleVariation = v; }
+        
+        public int  getPeriodVariation()          { return periodVariation; }
+        public void setPeriodVariation(int v)     { this.periodVariation = v; }
         public int  getActualCycleLength()        { return actualCycleLength; }
         public void setActualCycleLength(int v)   { this.actualCycleLength = v; }
         @com.fasterxml.jackson.annotation.JsonProperty("periodLengthMin")
@@ -662,9 +666,21 @@ public class CycleService {
         int periodLength = Math.max(markedPeriodLength, defaultPeriodLen);
 
         // For display in Your Pattern: show actual marked days (markedPeriodLength)
-        // pMin/pMax should reflect actual marks, not the padded value
-        int pMin = periodLengthsPerCycle.stream().mapToInt(i -> i).min().orElse(markedPeriodLength);
-        int pMax = periodLengthsPerCycle.stream().mapToInt(i -> i).max().orElse(markedPeriodLength);
+     // Only include historical cycles (not current active) for period length range
+        // Current cycle may still be in progress so exclude it from min/max
+        List<Integer> historicalPeriodLengths = periodLengthsPerCycle.subList(
+            0, Math.max(0, periodLengthsPerCycle.size() - 1));
+
+        int pMin = historicalPeriodLengths.isEmpty()
+            ? markedPeriodLength
+            : historicalPeriodLengths.stream().mapToInt(i -> i).min().orElse(markedPeriodLength);
+        int pMax = historicalPeriodLengths.isEmpty()
+            ? markedPeriodLength
+            : historicalPeriodLengths.stream().mapToInt(i -> i).max().orElse(markedPeriodLength);
+        
+     // Period variation = difference between longest and shortest period
+        // 0 = consistent, higher = more variable
+        int periodVariation = (pMin > 0 && pMax > 0) ? (pMax - pMin) : 0;
         System.out.println("🔍 markedPeriodLength=" + markedPeriodLength + " periodLength=" + periodLength + " pMin=" + pMin + " pMax=" + pMax + " cycles=" + periodLengthsPerCycle);
 
      // Fetch completed cycles — compute actual length from start date gaps
@@ -785,6 +801,7 @@ public class CycleService {
         resp.setPeriodLengthMax(pMax);
         resp.setPeriodLengthMin(pMin);
         resp.setPeriodLengthMax(pMax);
+        resp.setPeriodVariation(periodVariation);
 
      // patternCycleCount = number of gaps we found = number of completed cycles
         resp.setPatternCycleCount(recentLengths.size());
@@ -1167,7 +1184,7 @@ public class CycleService {
         long daysSinceStart = ChronoUnit.DAYS.between(activeCycle.getStartDate(), periodDate);
         long daysFromToday  = ChronoUnit.DAYS.between(periodDate, today);
 
-        if (daysFromToday > 20) {
+        if (daysFromToday > 45) {
             // This is a past period mark — save as historical closed cycle
             // This is a past period mark — save as historical closed cycle
             // This is a past period mark — save as historical closed cycle
