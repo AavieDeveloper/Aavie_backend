@@ -1,9 +1,11 @@
 package com.example.AavieApp.model;
 
 import jakarta.persistence.*;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 
+import java.time.LocalDate;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+import java.time.LocalDateTime;
 /**
  * One row per cycle per user.
  * Cycle 1 starts on the first period date recorded.
@@ -42,10 +44,12 @@ public class Cycle {
     @Column(name = "period_length")
     private Integer periodLength;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
+    @UpdateTimestamp
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
     @PrePersist

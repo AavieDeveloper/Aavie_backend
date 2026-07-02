@@ -15,6 +15,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 
+import java.util.Objects;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
@@ -612,7 +614,9 @@ public class CycleService {
                 if (!gaps.isEmpty()) {
                     int avg = (int) Math.round(gaps.stream().mapToInt(i->i).average().orElse(defaultCycleLen));
                     partial.setAvgCycleLength(avg);
-                    partial.setPatternCycleCount(gaps.size());
+                    // patternCycleCount = number of historical cycles, not gaps
+                    // gaps.size() = cycles - 1, so 2 cycles gives 1 gap but should show count=2
+                    partial.setPatternCycleCount(historicalOnly.size());
                     if (gaps.size() >= 2) {
                         int mostRecent = gaps.get(0);
                         double avgOthers = gaps.subList(1, gaps.size()).stream().mapToInt(i->i).average().orElse(mostRecent);
@@ -623,9 +627,9 @@ public class CycleService {
                 List<Integer> histPeriodLens = new ArrayList<>();
                 for (Cycle c : historicalOnly) {
                     if (c.getEndDate() == null) continue;
-                    // Use actual cycle boundaries — prevents overlap
+                    // Tight 10-day window — prevents overlap with next cycle
                     LocalDate wS = c.getStartDate();
-                    LocalDate wE = c.getEndDate();
+                    LocalDate wE = c.getStartDate().plusDays(10);
                     long cnt = markRepo.countPeriodMarksByUserIdAndDateRange(userId, wS, wE);
                     if (cnt > 0 && cnt <= 15) histPeriodLens.add((int) cnt);
                 }
@@ -665,9 +669,11 @@ public class CycleService {
         LocalDate activeWEnd = cycleStart.plusDays(10);
         long activeMarkCount = markRepo.countPeriodMarksByUserIdAndDateRange(
             userId, activeWStart, activeWEnd);
+     // Only use actual marked count — do NOT fallback to defaultPeriodLen
+        // defaultPeriodLen fallback pollutes pMin/pMax with fake data
         int markedPeriodLength = (activeMarkCount > 0 && activeMarkCount <= 15)
-            ? (int) activeMarkCount : defaultPeriodLen;
-        int periodLength = Math.max(markedPeriodLength, defaultPeriodLen);
+            ? (int) activeMarkCount : 0;
+        int periodLength = markedPeriodLength > 0 ? markedPeriodLength : defaultPeriodLen;
 
         System.out.println("🔍 active cycle period marks=" + activeMarkCount
             + " markedPeriodLength=" + markedPeriodLength);
@@ -680,10 +686,10 @@ public class CycleService {
 
             // Use actual cycle date range — from start to end date
             // This prevents windows overlapping between adjacent cycles
+         // Tight 10-day window — same as historicalOnly branch
+            // prevents overlap between adjacent cycle windows
             LocalDate wStart = c.getStartDate();
-            LocalDate wEnd = c.getEndDate() != null
-                ? c.getEndDate()
-                : c.getStartDate().plusDays(15);
+            LocalDate wEnd = c.getStartDate().plusDays(10);
 
             long count = markRepo.countPeriodMarksByUserIdAndDateRange(userId, wStart, wEnd);
             System.out.println("🔍 historical cycle id=" + c.getId()
@@ -697,17 +703,19 @@ public class CycleService {
 
      // Include active cycle's marked period length in the range calculation
         // This ensures current month is part of min/max/variation
+     // pMin/pMax from historical only — active cycle excluded if no marks yet
+        // Adding markedPeriodLength=0 or defaultPeriodLen would corrupt the range
         List<Integer> allPeriodLengths = new ArrayList<>(historicalPeriodLengths);
         if (markedPeriodLength > 0) {
             allPeriodLengths.add(markedPeriodLength);
         }
 
         int pMin = allPeriodLengths.isEmpty()
-            ? markedPeriodLength
-            : allPeriodLengths.stream().mapToInt(i -> i).min().orElse(markedPeriodLength);
+            ? 0
+            : allPeriodLengths.stream().mapToInt(i -> i).min().orElse(0);
         int pMax = allPeriodLengths.isEmpty()
-            ? markedPeriodLength
-            : allPeriodLengths.stream().mapToInt(i -> i).max().orElse(markedPeriodLength);
+            ? 0
+            : allPeriodLengths.stream().mapToInt(i -> i).max().orElse(0);
         int periodVariation = (pMin > 0 && pMax > 0) ? (pMax - pMin) : 0;
 
         System.out.println("🔍 allPeriodLengths=" + allPeriodLengths
@@ -1055,6 +1063,19 @@ public class CycleService {
                         cycleRepo.flush();
                     }
                 });
+             // Recalculate period_length after mark deletion
+                cycleRepo.findByUserIdOrderByCycleNumberAsc(userId).forEach(c -> {
+                    if (c.getStartDate() == null) return;
+                    long count = markRepo.countPeriodMarksByUserIdAndDateRange(
+                        userId,
+                        c.getStartDate(),
+                        c.getStartDate().plusDays(14));
+                    int newLen = (count > 0 && count <= 15) ? (int) count : 0;
+                    if (!Objects.equals(c.getPeriodLength(), newLen)) {
+                        c.setPeriodLength(newLen);
+                        cycleRepo.save(c);
+                    }
+                });
                 cycleRepo.flush();
                 recalculateHistoricalCycleLengths(userId);
                 continue;
@@ -1068,21 +1089,21 @@ public class CycleService {
             markRepo.save(mark);
         }
 
-        // Update period_length AFTER all marks are saved
-        cycleRepo.findActiveCycleByUserId(userId).ifPresent(c -> {
-            if (c.getStartDate() != null) {
-                long periodCount = markRepo.countPeriodMarksByUserIdAndDateRange(
+     // Only recalculate period_length when period marks were involved
+        if (!periodDates.isEmpty()) {
+            cycleRepo.findByUserIdOrderByCycleNumberAsc(userId).forEach(c -> {
+                if (c.getStartDate() == null) return;
+                long count = markRepo.countPeriodMarksByUserIdAndDateRange(
                     userId,
                     c.getStartDate(),
                     c.getStartDate().plusDays(14));
-                System.out.println("🔍 updating period_length cycle id=" + c.getId()
-                    + " start=" + c.getStartDate() + " count=" + periodCount);
-                if (periodCount > 0 && periodCount <= 15) {
-                    c.setPeriodLength((int) periodCount);
+                int newLen = (count > 0 && count <= 15) ? (int) count : 0;
+                if (!Objects.equals(c.getPeriodLength(), newLen)) {
+                    c.setPeriodLength(newLen);
                     cycleRepo.save(c);
                 }
-            }
-        });
+            });
+        }
     }
 
 
@@ -1135,7 +1156,10 @@ public class CycleService {
                     newCycle.setStartDate(null); // no period marked yet
                     CycleSettings settings = settingsRepo.findByUserId(userId).orElse(null);
                     newCycle.setCycleLength(settings != null ? settings.getCycleLength() : 28);
-                    newCycle.setPeriodLength(settings != null ? settings.getPeriodLength() : 5);
+                 // Set to 0 initially — will be updated by saveMarks ifPresent block
+                    // after actual marks are saved. Using CycleSettings default (5) here
+                    // is wrong because it never gets corrected for historical cycles.
+                    newCycle.setPeriodLength(0);
                     Cycle saved = cycleRepo.save(newCycle);
                     cycleId = saved.getId();
                 }
@@ -1258,13 +1282,25 @@ public class CycleService {
             // we may have a new reference point
             recalculateHistoricalCycleLengths(userId);
         } else if (daysSinceStart >= 18) {
-            // New period that is recent — close current, open next
-            activeCycle.setEndDate(periodDate.minusDays(1));
-            activeCycle.setCycleLength((int) daysSinceStart);
-            cycleRepo.save(activeCycle);
-            createNewCycle(userId, periodDate);
-            // Recalculate all historical cycle lengths with new reference
-            recalculateHistoricalCycleLengths(userId);
+            // Guard — prevent duplicate cycle if one already exists near this date
+            boolean cycleAlreadyExists = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
+                .stream()
+                .anyMatch(c -> c.getStartDate() != null
+                    && Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), periodDate)) < 5
+                    && !c.getId().equals(activeCycle.getId()));
+
+            if (!cycleAlreadyExists) {
+                // Count actual period marks for the cycle being closed BEFORE closing
+                // createNewCycle sets period_length from CycleSettings default (5)
+                // which is wrong — we need the actual marked days
+            	activeCycle.setEndDate(periodDate.minusDays(1));
+                activeCycle.setCycleLength((int) daysSinceStart);
+                cycleRepo.save(activeCycle);
+                createNewCycle(userId, periodDate);
+                recalculateHistoricalCycleLengths(userId);
+            } else {
+                System.out.println("🔍 Cycle already exists near " + periodDate + " — skipping duplicate");
+            }
         } else {
             // Same cycle window — only move start date EARLIER, never later
             // Marking day 2, 3, 4 of period should NOT reset the cycle start
@@ -1385,7 +1421,7 @@ public class CycleService {
         historical.setStartDate(startDate);
         historical.setEndDate(startDate.plusDays(realCycleLen - 1));
         historical.setCycleLength(realCycleLen);
-        historical.setPeriodLength(periodLen);
+        historical.setPeriodLength(0); // will be set from actual marks below
 
         cycleRepo.save(historical);
     }

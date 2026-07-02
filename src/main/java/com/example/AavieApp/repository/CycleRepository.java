@@ -1,6 +1,8 @@
 package com.example.AavieApp.repository;
  
 import com.example.AavieApp.model.Cycle;
+import com.example.AavieApp.model.CycleDayMark;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -65,5 +67,7 @@ public interface CycleRepository extends JpaRepository<Cycle, Long> {
     	    return findRecentCompletedCyclesPage(userId,
     	        org.springframework.data.domain.PageRequest.of(0, limit)).getContent();
     	}
+    	
+    
 }
  

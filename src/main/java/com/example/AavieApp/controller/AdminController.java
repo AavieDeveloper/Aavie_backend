@@ -2,16 +2,18 @@ package com.example.AavieApp.controller;
 
 import com.example.AavieApp.model.UserAssessment;
 
-
 import com.example.AavieApp.model.UserProfile;
 import com.example.AavieApp.repository.ArticleRepository;
 import com.example.AavieApp.repository.ManufacturingRunRepository;
-import com.example.AavieApp.repository.OtpVerificationRepository;
 import com.example.AavieApp.model.ManufacturingRun;
 import com.example.AavieApp.repository.UserProfileRepository;
+
+
+
 import com.example.AavieApp.repository.UserAssessmentRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.example.AavieApp.model.TongueReading;
 import com.example.AavieApp.repository.TongueReadingRepository;
@@ -33,23 +35,20 @@ public class AdminController {
     private final ArticleRepository        articleRepo;
     private final TongueReadingRepository tongueRepo;
     private final ManufacturingRunRepository mfgRepo;
-    private final OtpVerificationRepository otpRepo;  // ← must exist
-
+    
     public AdminController(
-        UserProfileRepository userRepo,
-        UserAssessmentRepository assessRepo,
-        ArticleRepository articleRepo,
-        TongueReadingRepository tongueRepo,
-        ManufacturingRunRepository mfgRepo,  // ← ADD
-        OtpVerificationRepository otpRepo   // ← must be here
-    ) {
-        this.userRepo    = userRepo;
-        this.assessRepo  = assessRepo;
-        this.articleRepo = articleRepo;
-        this.tongueRepo  = tongueRepo;
-        this.mfgRepo     = mfgRepo;  // ← ADD
-        this.otpRepo = otpRepo;  // ← must be here
-    }
+    	    UserProfileRepository userRepo,
+    	    UserAssessmentRepository assessRepo,
+    	    ArticleRepository articleRepo,
+    	    TongueReadingRepository tongueRepo,
+    	    ManufacturingRunRepository mfgRepo
+    	) {
+    	    this.userRepo    = userRepo;
+    	    this.assessRepo  = assessRepo;
+    	    this.articleRepo = articleRepo;
+    	    this.tongueRepo  = tongueRepo;
+    	    this.mfgRepo     = mfgRepo;
+    	}
 
     // ── Dashboard Stats ───────────────────────────────────────────────────────
     @GetMapping("/dashboard/stats")
@@ -107,7 +106,8 @@ public class AdminController {
         stats.put("recentUsers",       recentUsers);
         return stats;
     }
-
+    
+    
     // TO:
     @GetMapping("/users/stats")
     public Map<String, Object> getUserStats() {
@@ -346,62 +346,4 @@ public class AdminController {
         
         return sb.toString().trim();
     }
-    
- // ── OTP Records ───────────────────────────────────────────────────────────
-    @GetMapping("/otp/records")
-    public List<Map<String, Object>> getOtpRecords() {
-        return otpRepo.findAll(
-            org.springframework.data.domain.Sort.by(
-                org.springframework.data.domain.Sort.Direction.DESC, "createdAt"
-            )
-        ).stream().map(o -> {
-            Map<String, Object> record = new java.util.LinkedHashMap<>();
-            record.put("id",           o.getId());
-            record.put("mobile",       o.getMobileNumber());
-            record.put("otp",          o.getOtpCode());
-            record.put("status",       Boolean.TRUE.equals(o.getIsUsed()) ? "used"
-                                       : o.getExpiresAt().isBefore(java.time.LocalDateTime.now()) ? "expired"
-                                       : "active");
-            record.put("isUsed",       o.getIsUsed());
-            record.put("createdAt",    o.getCreatedAt() != null ?
-                o.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")) : "");
-            record.put("expiresAt",    o.getExpiresAt() != null ?
-                o.getExpiresAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")) : "");
-            record.put("isTestNumber", "+911234567890".equals(o.getMobileNumber()));
-            return record;
-        }).collect(Collectors.toList());
-    }
-
-    // ── OTP Stats ─────────────────────────────────────────────────────────────
-    @GetMapping("/otp/stats")
-    public Map<String, Object> getOtpStats() {
-        java.time.LocalDateTime startOfDay = java.time.LocalDate.now().atStartOfDay();
-        java.time.LocalDateTime now        = java.time.LocalDateTime.now();
-
-        List<com.example.AavieApp.model.OtpVerification> all = otpRepo.findAll();
-
-        long total    = all.stream()
-            .filter(o -> o.getCreatedAt() != null && o.getCreatedAt().isAfter(startOfDay))
-            .count();
-        long verified = all.stream()
-            .filter(o -> o.getCreatedAt() != null && o.getCreatedAt().isAfter(startOfDay)
-                      && Boolean.TRUE.equals(o.getIsUsed()))
-            .count();
-        long expired  = all.stream()
-            .filter(o -> o.getCreatedAt() != null && o.getCreatedAt().isAfter(startOfDay)
-                      && !Boolean.TRUE.equals(o.getIsUsed())
-                      && o.getExpiresAt() != null && o.getExpiresAt().isBefore(now))
-            .count();
-        long newUsers = userRepo.findAll().stream()
-            .filter(u -> u.getCreatedAt() != null && u.getCreatedAt().isAfter(startOfDay))
-            .count();
-
-        return Map.of(
-            "total",    total,
-            "verified", verified,
-            "expired",  expired,
-            "newUsers", newUsers
-        );
-    }
-    
 }
