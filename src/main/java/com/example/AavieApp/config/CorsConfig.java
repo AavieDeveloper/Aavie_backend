@@ -42,9 +42,7 @@ public class CorsConfig {
             "http://10.*",
             "http://192.168.*",
             "https://*.netlify.app",                    // ← must be here
-            "https://adminpanelaavie.netlify.app",      // ← must be here
-            "http://your-admin-domain.com",
-            "https://aavie-admin-panel.onrender.com",  // ← add this
+             "https://*.onrender.com",  // ← add this
             "capacitor://localhost",
             "exp://*"
         ));
