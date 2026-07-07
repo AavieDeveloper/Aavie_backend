@@ -54,21 +54,20 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints - no authentication required
-                .requestMatchers(
-                    "/api/auth/**",
-                    "/api/admin/otp/records",
-                    "/api/admin/otp/stats",
-                    "/api/user/health",
-                    "/api/public/**",
-                    "/api/detection/**", 
-                    "/api/cycle/**",// ✅ MUST HAVE THIS
-                    "/error"
-                ).permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                // All other endpoints require authentication
-                .anyRequest().authenticated()
-            )
+            	    // Public endpoints - no authentication required
+            	    .requestMatchers(
+            	        "/api/auth/**",
+            	        "/api/user/health",
+            	        "/api/public/**",
+            	        "/api/detection/**", 
+            	        "/api/cycle/**",// ✅ MUST HAVE THIS
+            	        "/uploads/**",
+            	        "/error"
+            	    ).permitAll()
+            	    .requestMatchers("/api/admin/**").hasRole("ADMIN")
+            	    // All other endpoints require authentication
+            	    .anyRequest().authenticated()
+            	)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         
         return http.build();

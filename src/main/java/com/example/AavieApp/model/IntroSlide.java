@@ -30,6 +30,18 @@ public class IntroSlide {
 
     @Column(name = "is_active")
     private boolean isActive = true;
+    
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String v) { this.imageUrl = v; }
+    
+    @Column(name = "eyebrow_color", length = 10)
+    private String eyebrowColor; // "gold" | "teal"
+
+    public String getEyebrowColor() { return eyebrowColor; }
+    public void setEyebrowColor(String v) { this.eyebrowColor = v; }
 
     // getters and setters
     public Long getId() { return id; }
