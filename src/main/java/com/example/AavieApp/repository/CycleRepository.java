@@ -31,6 +31,9 @@ public interface CycleRepository extends JpaRepository<Cycle, Long> {
     /** Most recent N cycles — for comparison features */
     @Query("SELECT c FROM Cycle c WHERE c.userId = :userId ORDER BY c.cycleNumber DESC")
     List<Cycle> findRecentCyclesByUserId(Long userId);
+    
+    @Query("SELECT c FROM Cycle c WHERE c.userId = :userId AND c.endDate IS NULL ORDER BY c.startDate DESC")
+    List<Cycle> findAllOpenCyclesOrderedByStartDesc(@Param("userId") Long userId);
  
     @Query("SELECT c FROM Cycle c WHERE c.userId = :userId " +
             "AND c.startDate <= :date AND (c.endDate IS NULL OR c.endDate >= :date) " +

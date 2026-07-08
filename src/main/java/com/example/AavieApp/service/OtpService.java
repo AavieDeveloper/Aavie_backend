@@ -230,20 +230,21 @@ public class OtpService {
         return result;
     }
 
-    // ── 2Factor sender ────────────────────────────────────────────────────────
+ // ── 2Factor sender ────────────────────────────────────────────────────────
     private boolean sendVisFast2SMS(String mobileNumber, String otp) {
         try {
             String number = mobileNumber.startsWith("+91")
                 ? mobileNumber.substring(3)
                 : mobileNumber;
 
+            // Option 1: SMS with automatic fallback to voice
             String url = "https://2factor.in/API/V1/"
                 + fast2smsApiKey
                 + "/SMS/" + number
                 + "/" + otp
-                + "/AUTOGEN2";
+                + "/OTP1";  // Changed from AUTOGEN2 to OTP1 for better SMS delivery
 
-            System.out.println("2Factor URL: " + url);
+            System.out.println("2Factor SMS URL: " + url);
 
             java.net.URL apiUrl = new java.net.URL(url);
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) apiUrl.openConnection();
@@ -262,13 +263,68 @@ public class OtpService {
             stream.close();
             conn.disconnect();
 
-            System.out.println("2Factor status: " + statusCode);
-            System.out.println("2Factor response: " + body);
+            System.out.println("2Factor SMS status: " + statusCode);
+            System.out.println("2Factor SMS response: " + body);
+
+            // If SMS fails, try voice call as fallback
+            if (statusCode != 200 || !body.contains("\"Status\":\"Success\"")) {
+                System.out.println("SMS failed, attempting voice call...");
+                return sendViaVoiceCall(number, otp);
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            System.out.println("2Factor SMS error: " + e.getClass().getName() + " — " + e.getMessage());
+            
+            // Try voice call as fallback if SMS throws exception
+            try {
+                String number = mobileNumber.startsWith("+91")
+                    ? mobileNumber.substring(3)
+                    : mobileNumber;
+                return sendViaVoiceCall(number, otp);
+            } catch (Exception ex) {
+                System.out.println("Voice call also failed: " + ex.getMessage());
+                return false;
+            }
+        }
+    }
+
+    // Add this new method for voice call fallback (optional)
+    private boolean sendViaVoiceCall(String number, String otp) {
+        try {
+            // 2Factor voice call API endpoint
+            String voiceUrl = "https://2factor.in/API/V1/"
+                + fast2smsApiKey
+                + "/VOICE/" + number
+                + "/" + otp;
+
+            System.out.println("2Factor Voice URL: " + voiceUrl);
+
+            java.net.URL apiUrl = new java.net.URL(voiceUrl);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) apiUrl.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setRequestProperty("User-Agent", "AAVIE-Backend/1.0");
+
+            int statusCode = conn.getResponseCode();
+
+            java.io.InputStream stream = statusCode == 200
+                ? conn.getInputStream()
+                : conn.getErrorStream();
+
+            String body = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            stream.close();
+            conn.disconnect();
+
+            System.out.println("2Factor Voice status: " + statusCode);
+            System.out.println("2Factor Voice response: " + body);
 
             return statusCode == 200 && body.contains("\"Status\":\"Success\"");
 
         } catch (Exception e) {
-            System.out.println("2Factor error: " + e.getClass().getName() + " — " + e.getMessage());
+            System.out.println("2Factor Voice error: " + e.getMessage());
             return false;
         }
     }

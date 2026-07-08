@@ -1078,6 +1078,7 @@ public class CycleService {
                 });
                 cycleRepo.flush();
                 recalculateHistoricalCycleLengths(userId);
+                enforceSingleActiveCycle(userId);
                 continue;
             }
 
@@ -1089,6 +1090,7 @@ public class CycleService {
             markRepo.save(mark);
         }
 
+     // Only recalculate period_length when period marks were involved
      // Only recalculate period_length when period marks were involved
         if (!periodDates.isEmpty()) {
             cycleRepo.findByUserIdOrderByCycleNumberAsc(userId).forEach(c -> {
@@ -1104,6 +1106,7 @@ public class CycleService {
                 }
             });
         }
+        enforceSingleActiveCycle(userId);
     }
 
 
@@ -1229,15 +1232,15 @@ public class CycleService {
 
      // Guard: skip only if ACTIVE cycle starts within 7 days of this date
         // Historical closed cycles never block new period marks
-        boolean activeNearby = cycleRepo.findActiveCycleByUserId(userId)
-            .filter(c -> c.getStartDate() != null
-                && Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), periodDate)) <= 7)
-            .isPresent();
-        if (activeNearby) {
-            System.out.println("🔍 handlePeriodMark: active cycle within 7 days of "
-                + periodDate + " — same period, skipping");
-            return;
-        }
+//        boolean activeNearby = cycleRepo.findActiveCycleByUserId(userId)
+//            .filter(c -> c.getStartDate() != null
+//                && Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), periodDate)) <= 7)
+//            .isPresent();
+//        if (activeNearby) {
+//            System.out.println("🔍 handlePeriodMark: active cycle within 7 days of "
+//                + periodDate + " — same period, skipping");
+//            return;
+//        }
 
         Optional<Cycle> activeCycleOpt = cycleRepo.findActiveCycleByUserId(userId);
         if (activeCycleOpt.isEmpty()) {
@@ -1274,12 +1277,17 @@ public class CycleService {
 
         if (daysFromToday > 45) {
             // This is a past period mark — save as historical closed cycle
-            // This is a past period mark — save as historical closed cycle
-            // This is a past period mark — save as historical closed cycle
             // Do NOT disturb the current active cycle
             createHistoricalCycle(userId, periodDate);
-            // Recalculate lengths for all historical cycles now that
-            // we may have a new reference point
+            recalculateHistoricalCycleLengths(userId);
+        } else if (daysSinceStart <= -18) {
+            // periodDate is well BEFORE the active cycle's start — this is a
+            // separate, earlier real cycle, not a correction to the active one.
+            // Without this branch, any backward gap fell through to the
+            // "same window" else-branch below and silently merged two
+            // different periods into one cycle (confirmed bug — Jun marks
+            // merging into the active Jul cycle).
+            createHistoricalCycle(userId, periodDate);
             recalculateHistoricalCycleLengths(userId);
         } else if (daysSinceStart >= 18) {
             // Guard — prevent duplicate cycle if one already exists near this date
@@ -1372,13 +1380,20 @@ public class CycleService {
      * The current active cycle is NOT affected.
      */
     private void createHistoricalCycle(Long userId, LocalDate startDate) {
-        // Check if a cycle already exists for this date — avoid duplicates
-        Optional<Cycle> existing = cycleRepo.findCycleForDate(userId, startDate);
+        // Check if a cycle already exists for this SAME PERIOD — not just
+        // "startDate <= this date", which fails when marking backward
+        // (newest day first, then earlier days of the same period). Use a
+        // proximity window instead, matching the same-period logic already
+        // used for the active cycle in handlePeriodMark.
+        Optional<Cycle> existing = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
+            .stream()
+            .filter(c -> c.getStartDate() != null)
+            .filter(c -> Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), startDate)) <= 7)
+            .findFirst();
         if (existing.isPresent()) {
             Cycle c = existing.get();
             // Only move start date EARLIER, never later
-            // This prevents marking day 2 from overwriting day 1 as start
-            if (c.getStartDate() == null || startDate.isBefore(c.getStartDate())) {
+            if (startDate.isBefore(c.getStartDate())) {
                 c.setStartDate(startDate);
                 cycleRepo.save(c);
             }
@@ -1450,6 +1465,36 @@ public class CycleService {
                 current.setEndDate(next.getStartDate().minusDays(1));
                 cycleRepo.save(current);
             }
+        }
+    }
+    
+    /**
+     * Enforces the invariant every calculation in this service depends on:
+     * exactly one cycle per user may have end_date = NULL. If more than one
+     * exists — from any creation path disagreeing with another — this closes
+     * all but the one with the latest start_date, which is the only one that
+     * can legitimately still be in progress.
+     */
+    private void enforceSingleActiveCycle(Long userId) {
+        List<Cycle> openCycles = cycleRepo.findAllOpenCyclesOrderedByStartDesc(userId)
+            .stream()
+            .filter(c -> c.getStartDate() != null)
+            .collect(Collectors.toList());
+
+        if (openCycles.size() <= 1) return;
+
+        System.out.println("⚠️ enforceSingleActiveCycle: found " + openCycles.size()
+            + " open cycles for user " + userId + " — closing all but the most recent");
+
+        for (int i = 1; i < openCycles.size(); i++) {
+            Cycle stale    = openCycles.get(i);
+            Cycle closesAt = openCycles.get(i - 1);
+            stale.setEndDate(closesAt.getStartDate().minusDays(1));
+            stale.setCycleLength((int) ChronoUnit.DAYS.between(
+                stale.getStartDate(), closesAt.getStartDate()));
+            cycleRepo.save(stale);
+            System.out.println("   closed stale cycle id=" + stale.getId()
+                + " start=" + stale.getStartDate() + " end=" + stale.getEndDate());
         }
     }
     
