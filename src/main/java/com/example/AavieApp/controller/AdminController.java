@@ -2,11 +2,14 @@ package com.example.AavieApp.controller;
 
 import com.example.AavieApp.model.UserAssessment;
 
+
 import com.example.AavieApp.model.UserProfile;
 import com.example.AavieApp.repository.ArticleRepository;
 import com.example.AavieApp.repository.ManufacturingRunRepository;
 import com.example.AavieApp.model.ManufacturingRun;
 import com.example.AavieApp.repository.UserProfileRepository;
+import com.example.AavieApp.model.OtpVerification;
+import com.example.AavieApp.repository.OtpVerificationRepository;
 
 
 
@@ -30,25 +33,28 @@ import java.util.Optional;
 @CrossOrigin(origins = "*")
 public class AdminController {
 
-    private final UserProfileRepository    userRepo;
-    private final UserAssessmentRepository assessRepo;
-    private final ArticleRepository        articleRepo;
-    private final TongueReadingRepository tongueRepo;
-    private final ManufacturingRunRepository mfgRepo;
-    
-    public AdminController(
-    	    UserProfileRepository userRepo,
-    	    UserAssessmentRepository assessRepo,
-    	    ArticleRepository articleRepo,
-    	    TongueReadingRepository tongueRepo,
-    	    ManufacturingRunRepository mfgRepo
-    	) {
-    	    this.userRepo    = userRepo;
-    	    this.assessRepo  = assessRepo;
-    	    this.articleRepo = articleRepo;
-    	    this.tongueRepo  = tongueRepo;
-    	    this.mfgRepo     = mfgRepo;
-    	}
+	private final UserProfileRepository      userRepo;
+	private final UserAssessmentRepository   assessRepo;
+	private final ArticleRepository          articleRepo;
+	private final TongueReadingRepository    tongueRepo;
+	private final ManufacturingRunRepository mfgRepo;
+	private final OtpVerificationRepository  otpRepo;
+
+	public AdminController(
+	    UserProfileRepository userRepo,
+	    UserAssessmentRepository assessRepo,
+	    ArticleRepository articleRepo,
+	    TongueReadingRepository tongueRepo,
+	    ManufacturingRunRepository mfgRepo,
+	    OtpVerificationRepository otpRepo
+	) {
+	    this.userRepo    = userRepo;
+	    this.assessRepo  = assessRepo;
+	    this.articleRepo = articleRepo;
+	    this.tongueRepo  = tongueRepo;
+	    this.mfgRepo     = mfgRepo;
+	    this.otpRepo     = otpRepo;
+	}
 
     // ── Dashboard Stats ───────────────────────────────────────────────────────
     @GetMapping("/dashboard/stats")
@@ -345,5 +351,61 @@ public class AdminController {
         }
         
         return sb.toString().trim();
+    }
+    
+ // ── OTP Records ───────────────────────────────────────────────────────────
+    @GetMapping("/otp/records")
+    public List<Map<String, Object>> getOtpRecords() {
+        return otpRepo.findAllByOrderByCreatedAtDesc()
+            .stream()
+            .map(otp -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id",           otp.getId());
+                row.put("mobile",       otp.getMobileNumber());
+                row.put("otp",          otp.getOtpCode());
+                row.put("status",       resolveOtpStatus(otp));
+                row.put("isNewUser",    false);
+                row.put("isTestNumber", isTestNumber(otp.getMobileNumber()));
+                row.put("createdAt",    otp.getCreatedAt());
+                row.put("expiresAt",    otp.getExpiresAt());
+                return row;
+            })
+            .collect(Collectors.toList());
+    }
+
+    // ── OTP Stats ─────────────────────────────────────────────────────────────
+    @GetMapping("/otp/stats")
+    public Map<String, Object> getOtpStats() {
+        List<OtpVerification> all = otpRepo.findAllByOrderByCreatedAtDesc();
+        java.time.LocalDateTime startOfDay =
+            java.time.LocalDateTime.now().toLocalDate().atStartOfDay();
+
+        List<OtpVerification> today = all.stream()
+            .filter(o -> o.getCreatedAt() != null
+                      && o.getCreatedAt().isAfter(startOfDay))
+            .collect(Collectors.toList());
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("total",    today.size());
+        stats.put("verified", today.stream()
+            .filter(o -> "used".equals(resolveOtpStatus(o))).count());
+        stats.put("expired",  today.stream()
+            .filter(o -> "expired".equals(resolveOtpStatus(o))).count());
+        stats.put("newUsers", 0);
+        return stats;
+    }
+
+    // ── OTP Helpers ───────────────────────────────────────────────────────────
+    private String resolveOtpStatus(OtpVerification otp) {
+        if (Boolean.TRUE.equals(otp.getIsUsed())) return "used";
+        if (otp.getExpiresAt() != null
+                && otp.getExpiresAt().isBefore(java.time.LocalDateTime.now()))
+            return "expired";
+        return "active";
+    }
+
+    private boolean isTestNumber(String mobile) {
+        if (mobile == null) return false;
+        return mobile.replace("+91", "").replace(" ", "").equals("1234567890");
     }
 }

@@ -38,6 +38,10 @@ public class CycleService {
     private final UserAssessmentRepository assessRepo;
     private final DailyLogRepository      logRepo;
     
+    private static final int MERGE_GAP_DAYS = 10; // marks within this many days = same period
+    private static final int MIN_CYCLE_GAP  = 20; // shortest gap counted as a real cycle length
+    private static final int MAX_CYCLE_GAP  = 45; // longest gap counted as a real cycle length
+    
     private static final Map<String, Integer> MOOD_SCORE_MAP = Map.of(
             "radiant",   95,
             "happy",     80,
@@ -282,9 +286,12 @@ public class CycleService {
         private String prakritiResult;
         private String pcosResult;
         
-        private CyclePreviousStats previousCycle1; // 2 cycles ago
-        private CyclePreviousStats previousCycle2; // 1 cycle ago
+        private CyclePreviousStats nowCycleStats;   // most recently COMPLETED cycle — shown as "Now"
+        private CyclePreviousStats previousCycle1;  // 3 cycles ago
+        private CyclePreviousStats previousCycle2;  // 2 cycles ago
 
+        public CyclePreviousStats getNowCycleStats()          { return nowCycleStats; }
+        public void setNowCycleStats(CyclePreviousStats v)    { this.nowCycleStats = v; }
         public CyclePreviousStats getPreviousCycle1()         { return previousCycle1; }
         public void setPreviousCycle1(CyclePreviousStats v)   { this.previousCycle1 = v; }
         public CyclePreviousStats getPreviousCycle2()         { return previousCycle2; }
@@ -555,15 +562,18 @@ public class CycleService {
                 + " cycleLength=" + c.getCycleLength()
                 + " userId=" + c.getUserId());
         }
+     // completedCycles is sorted most-recent-first.
+        // index 0 = last completed cycle → shown as "Now"
+        // index 1 = 2 completed cycles ago → shown as "Cycle 2"
+        // index 2 = 3 completed cycles ago → shown as "Cycle 1"
         if (completedCycles.size() >= 1) {
-            CyclePreviousStats stats2 = computeCycleStatsByCycle(completedCycles.get(0));
-            System.out.println("🔍 previousCycle2 cycleLength=" + stats2.getCycleLength()
-                + " periodLength=" + stats2.getPeriodLength()
-                + " loggedDays=" + stats2.getLoggedDays());
-            resp.setPreviousCycle2(stats2);
+            resp.setNowCycleStats(computeCycleStatsByCycle(completedCycles.get(0)));
         }
         if (completedCycles.size() >= 2) {
-            resp.setPreviousCycle1(computeCycleStatsByCycle(completedCycles.get(1)));
+            resp.setPreviousCycle2(computeCycleStatsByCycle(completedCycles.get(1)));
+        }
+        if (completedCycles.size() >= 3) {
+            resp.setPreviousCycle1(computeCycleStatsByCycle(completedCycles.get(2)));
         }
 
         // ── Prakriti & PCOS results for Insights header ──────────────────────
@@ -591,70 +601,9 @@ public class CycleService {
         Cycle activeCycle = cycleRepo.findActiveCycleByUserId(userId).orElse(null);
 
         if (activeCycle == null || activeCycle.getStartDate() == null) {
-            // Even without active cycle, try to compute pattern from historical cycles
-            List<Cycle> historicalOnly = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
-                .stream()
-                .filter(c -> c.getStartDate() != null)
-                .sorted(Comparator.comparing(Cycle::getStartDate))
-                .collect(Collectors.toList());
-
-            if (historicalOnly.size() >= 2) {
-                // Build a partial state showing pattern data even without active cycle
-                CycleStateResponse partial = buildDefaultState(today, defaultCycleLen, defaultPeriodLen);
-                List<Integer> gaps = new ArrayList<>();
-                for (int i = historicalOnly.size() - 1; i >= 1; i--) {
-                    int gap = (int) ChronoUnit.DAYS.between(
-                        historicalOnly.get(i-1).getStartDate(),
-                        historicalOnly.get(i).getStartDate());
-                    if (gap >= 20 && gap <= 45) {
-                        gaps.add(gap);
-                        if (gaps.size() >= 3) break;
-                    }
-                }
-                if (!gaps.isEmpty()) {
-                    int avg = (int) Math.round(gaps.stream().mapToInt(i->i).average().orElse(defaultCycleLen));
-                    partial.setAvgCycleLength(avg);
-                    // patternCycleCount = number of historical cycles, not gaps
-                    // gaps.size() = cycles - 1, so 2 cycles gives 1 gap but should show count=2
-                    partial.setPatternCycleCount(historicalOnly.size());
-                    if (gaps.size() >= 2) {
-                        int mostRecent = gaps.get(0);
-                        double avgOthers = gaps.subList(1, gaps.size()).stream().mapToInt(i->i).average().orElse(mostRecent);
-                        partial.setCycleVariation(mostRecent - (int) Math.round(avgOthers));
-                    }
-                }
-             // Also compute period variation from historical cycles
-                List<Integer> histPeriodLens = new ArrayList<>();
-                for (Cycle c : historicalOnly) {
-                    if (c.getEndDate() == null) continue;
-                    // Tight 10-day window — prevents overlap with next cycle
-                    LocalDate wS = c.getStartDate();
-                    LocalDate wE = c.getStartDate().plusDays(10);
-                    long cnt = markRepo.countPeriodMarksByUserIdAndDateRange(userId, wS, wE);
-                    if (cnt > 0 && cnt <= 15) histPeriodLens.add((int) cnt);
-                }
-                if (histPeriodLens.size() >= 2) {
-                    int hMin = histPeriodLens.stream().mapToInt(i->i).min().orElse(0);
-                    int hMax = histPeriodLens.stream().mapToInt(i->i).max().orElse(0);
-                    partial.setPeriodLengthMin(hMin);
-                    partial.setPeriodLengthMax(hMax);
-                    partial.setPeriodVariation(hMax - hMin);
-                }
-                assessRepo.findByUserIdAndAssessmentType(userId, "PCOS")
-                    .ifPresent(a -> partial.setPcosResult(a.getResultType()));
-                assessRepo.findByUserIdAndAssessmentType(userId, "PRAKRITI")
-                    .ifPresent(a -> partial.setPrakritiResult(a.getResultType()));
-                return partial;
-            }
-            return buildDefaultState(today, defaultCycleLen, defaultPeriodLen);
+            return buildStateWithHistoricalPattern(userId, today, defaultCycleLen, defaultPeriodLen);
         }
-
         LocalDate cycleStart = activeCycle.getStartDate();
-
-        // If cycle started more than 90 days ago, it's stale — treat as no active cycle
-        if (cycleStart != null && ChronoUnit.DAYS.between(cycleStart, today) > 90) {
-            return buildDefaultState(today, defaultCycleLen, defaultPeriodLen);
-        }
      // Count period marks per cycle using all period marks for this user
         // Group them by which cycle's date range they fall into
      // Count period marks directly per cycle using date windows
@@ -796,22 +745,25 @@ public class CycleService {
 
         int cycleLength = recentLengths.isEmpty()
         	    ? (activeCycle.getCycleLength() != null ? activeCycle.getCycleLength() : defaultCycleLen)
-        	    : recentLengths.get(0); // most recent gap = best estimate for current cycle length
+        	    : (int) Math.round(
+                recentLengths.stream().mapToInt(i -> i).average().orElse(defaultCycleLen));
         // Cycle day (1-based) from actual cycle start date
         int cycleDay = (int) ChronoUnit.DAYS.between(cycleStart, today) + 1;
         cycleDay = Math.max(1, cycleDay);
-        // Cap cycleDay at cycleLength + 7 (allow 7 days late before showing overdue)
-        // This prevents showing 159% progress
+
+       
+        
+        if (cycleDay > cycleLength) {
+            return buildStateWithHistoricalPattern(userId, today, defaultCycleLen, defaultPeriodLen);
+        }
+
         int displayCycleDay = Math.min(cycleDay, cycleLength);
 
         String phase    = computePhase(cycleDay, periodLength, cycleLength);
         String phaseKey = phaseToKey(phase);
 
-     // nextPeriod = cycleStart + cycleLength (first day of next cycle)
-        // This matches the end date shown in Insights: cycleStart + cycleLength - 1
-     // nextPeriod = cycleStart + cycleLength
-        // e.g. June 9 + 31 = July 10 (first day of next cycle)
-        // endDate of current cycle = July 9 (day 31)
+     
+
         LocalDate nextPeriod = cycleStart.plusDays(cycleLength);
         int daysUntilNext = (int) ChronoUnit.DAYS.between(today, nextPeriod);
         // Negative means overdue — keep negative so frontend can detect it
@@ -964,32 +916,79 @@ public class CycleService {
         
         return resp;
     }
+    
+    /**
+     * Builds the "no active/current cycle" response, but still populates
+     * pattern stats (avg cycle length, cycle variation, period length
+     * range, period variation) from historical cycles when at least 2
+     * exist. Called both when there's no active cycle at all, and when
+     * the most recent cycle has run its full expected length with
+     * nothing new marked — both cases should show "mark your period"
+     * for the current-cycle card while still keeping "Your Pattern"
+     * populated from real history.
+     */
+    private CycleStateResponse buildStateWithHistoricalPattern(
+            Long userId, LocalDate today, int defaultCycleLen, int defaultPeriodLen) {
+
+        List<Cycle> historicalOnly = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
+            .stream()
+            .filter(c -> c.getStartDate() != null)
+            .sorted(Comparator.comparing(Cycle::getStartDate))
+            .collect(Collectors.toList());
+
+        if (historicalOnly.size() < 2) {
+            return buildDefaultState(today, defaultCycleLen, defaultPeriodLen);
+        }
+
+        CycleStateResponse partial = buildDefaultState(today, defaultCycleLen, defaultPeriodLen);
+        List<Integer> gaps = new ArrayList<>();
+        for (int i = historicalOnly.size() - 1; i >= 1; i--) {
+            int gap = (int) ChronoUnit.DAYS.between(
+                historicalOnly.get(i-1).getStartDate(),
+                historicalOnly.get(i).getStartDate());
+            if (gap >= 20 && gap <= 45) {
+                gaps.add(gap);
+                if (gaps.size() >= 3) break;
+            }
+        }
+        if (!gaps.isEmpty()) {
+            int avg = (int) Math.round(gaps.stream().mapToInt(i->i).average().orElse(defaultCycleLen));
+            partial.setAvgCycleLength(avg);
+            partial.setPatternCycleCount(historicalOnly.size());
+            if (gaps.size() >= 2) {
+                int mostRecent = gaps.get(0);
+                double avgOthers = gaps.subList(1, gaps.size()).stream().mapToInt(i->i).average().orElse(mostRecent);
+                partial.setCycleVariation(mostRecent - (int) Math.round(avgOthers));
+            }
+        }
+
+        List<Integer> histPeriodLens = new ArrayList<>();
+        for (Cycle c : historicalOnly) {
+            LocalDate wS = c.getStartDate();
+            LocalDate wE = c.getStartDate().plusDays(10);
+            long cnt = markRepo.countPeriodMarksByUserIdAndDateRange(userId, wS, wE);
+            if (cnt > 0 && cnt <= 15) histPeriodLens.add((int) cnt);
+        }
+        if (histPeriodLens.size() >= 2) {
+            int hMin = histPeriodLens.stream().mapToInt(i->i).min().orElse(0);
+            int hMax = histPeriodLens.stream().mapToInt(i->i).max().orElse(0);
+            partial.setPeriodLengthMin(hMin);
+            partial.setPeriodLengthMax(hMax);
+            partial.setPeriodVariation(hMax - hMin);
+        }
+
+        assessRepo.findByUserIdAndAssessmentType(userId, "PCOS")
+            .ifPresent(a -> partial.setPcosResult(a.getResultType()));
+        assessRepo.findByUserIdAndAssessmentType(userId, "PRAKRITI")
+            .ifPresent(a -> partial.setPrakritiResult(a.getResultType()));
+
+        return partial;
+    }
 
     
     
     public void saveMarks(SaveMarksRequest req) {
         Long userId = req.getUserId();
-
-        List<LocalDate> periodDates = req.getMarks().entrySet().stream()
-            .filter(e -> e.getValue() == 1)
-            .map(e -> LocalDate.parse(e.getKey()))
-            .sorted()
-            .distinct()
-            .collect(Collectors.toList());
-
-        if (!periodDates.isEmpty()) {
-            LocalDate earliestPeriodDate = periodDates.get(0);
-            handlePeriodMark(userId, earliestPeriodDate);
-
-            for (int pi = 1; pi < periodDates.size(); pi++) {
-                LocalDate nextDate = periodDates.get(pi);
-                long gapFromFirst = ChronoUnit.DAYS.between(earliestPeriodDate, nextDate);
-                if (gapFromFirst >= 18) {
-                    handlePeriodMark(userId, nextDate);
-                    earliestPeriodDate = nextDate;
-                }
-            }
-        }
 
         for (Map.Entry<String, Integer> entry : req.getMarks().entrySet()) {
             LocalDate date     = LocalDate.parse(entry.getKey());
@@ -997,116 +996,16 @@ public class CycleService {
 
             if (markType == 0) {
                 markRepo.deleteByUserIdAndMarkDate(userId, date);
-                markRepo.flush();
-
-                Optional<Cycle> activeCycleOpt = cycleRepo.findActiveCycleByUserId(userId);
-                if (activeCycleOpt.isPresent()) {
-                    Cycle activeCycle = activeCycleOpt.get();
-                    if (activeCycle.getStartDate() != null) {
-                        long remainingCount = markRepo.countPeriodMarksByUserIdAndDateRange(
-                            userId,
-                            activeCycle.getStartDate().minusDays(5),
-                            activeCycle.getStartDate().plusDays(20)
-                        );
-                        if (remainingCount == 0) {
-                            activeCycle.setStartDate(null);
-                            activeCycle.setPeriodLength(5);
-                            cycleRepo.save(activeCycle);
-                            cycleRepo.flush();
-                        } else {
-                            List<CycleDayMark> remaining = markRepo.findByUserIdAndDateRange(
-                                userId,
-                                activeCycle.getStartDate().minusDays(5),
-                                activeCycle.getStartDate().plusDays(20)
-                            );
-                            LocalDate earliest = remaining.stream()
-                                .filter(m -> m.getMarkType() == 1)
-                                .map(CycleDayMark::getMarkDate)
-                                .min(LocalDate::compareTo)
-                                .orElse(activeCycle.getStartDate());
-                            activeCycle.setStartDate(earliest);
-                            activeCycle.setPeriodLength((int) remainingCount);
-                            cycleRepo.save(activeCycle);
-                            cycleRepo.flush();
-                        }
-                    }
-                }
-
-                List<Cycle> completedCycles = cycleRepo.findRecentCompletedCycles(userId, 10);
-                for (Cycle completedCycle : completedCycles) {
-                    if (completedCycle.getStartDate() == null) continue;
-                    long marksInCycle = markRepo.countPeriodMarksByUserIdAndDateRange(
-                        userId,
-                        completedCycle.getStartDate().minusDays(5),
-                        completedCycle.getStartDate().plusDays(20)
-                    );
-                    if (marksInCycle == 0) {
-                        System.out.println("🗑️ Deleting orphaned cycle id="
-                            + completedCycle.getId()
-                            + " start=" + completedCycle.getStartDate());
-                        cycleRepo.delete(completedCycle);
-                    }
-                }
-             // Also clean up active cycle if it has no period marks left
-                cycleRepo.findActiveCycleByUserId(userId).ifPresent(activeCycle -> {
-                    if (activeCycle.getStartDate() == null) return;
-                    long activeMarks = markRepo.countPeriodMarksByUserIdAndDateRange(
-                        userId,
-                        activeCycle.getStartDate().minusDays(5),
-                        activeCycle.getStartDate().plusDays(20)
-                    );
-                    if (activeMarks == 0) {
-                        System.out.println("🗑️ Deleting orphaned active cycle id="
-                            + activeCycle.getId()
-                            + " start=" + activeCycle.getStartDate());
-                        cycleRepo.delete(activeCycle);
-                        cycleRepo.flush();
-                    }
-                });
-             // Recalculate period_length after mark deletion
-                cycleRepo.findByUserIdOrderByCycleNumberAsc(userId).forEach(c -> {
-                    if (c.getStartDate() == null) return;
-                    long count = markRepo.countPeriodMarksByUserIdAndDateRange(
-                        userId,
-                        c.getStartDate(),
-                        c.getStartDate().plusDays(14));
-                    int newLen = (count > 0 && count <= 15) ? (int) count : 0;
-                    if (!Objects.equals(c.getPeriodLength(), newLen)) {
-                        c.setPeriodLength(newLen);
-                        cycleRepo.save(c);
-                    }
-                });
-                cycleRepo.flush();
-                recalculateHistoricalCycleLengths(userId);
-                enforceSingleActiveCycle(userId);
-                continue;
+            } else {
+                CycleDayMark mark = markRepo.findByUserIdAndMarkDate(userId, date)
+                    .orElse(new CycleDayMark(userId, null, date, markType));
+                mark.setMarkType(markType);
+                markRepo.save(mark);
             }
-
-            Long cycleId = resolveCycleIdForDate(userId, date, markType);
-            CycleDayMark mark = markRepo.findByUserIdAndMarkDate(userId, date)
-                .orElse(new CycleDayMark(userId, cycleId, date, markType));
-            mark.setMarkType(markType);
-            mark.setCycleId(cycleId);
-            markRepo.save(mark);
         }
+        markRepo.flush();
 
-     // Only recalculate period_length when period marks were involved
-     // Only recalculate period_length when period marks were involved
-        if (!periodDates.isEmpty()) {
-            cycleRepo.findByUserIdOrderByCycleNumberAsc(userId).forEach(c -> {
-                if (c.getStartDate() == null) return;
-                long count = markRepo.countPeriodMarksByUserIdAndDateRange(
-                    userId,
-                    c.getStartDate(),
-                    c.getStartDate().plusDays(14));
-                int newLen = (count > 0 && count <= 15) ? (int) count : 0;
-                if (!Objects.equals(c.getPeriodLength(), newLen)) {
-                    c.setPeriodLength(newLen);
-                    cycleRepo.save(c);
-                }
-            });
-        }
-        enforceSingleActiveCycle(userId);
+        rebuildCycles(userId);
     }
 
 
@@ -1214,324 +1113,165 @@ public class CycleService {
             .orElse(null);
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  Cycle management helpers
-    // ═════════════════════════════════════════════════════════════════════════
-
+   
     /**
-     * Called when a period mark (type=1) is saved.
-     * Logic:
-     *  - If no cycles exist → create Cycle 1 with this start date
-     *  - If there's an active cycle and this date is >= 21 days after its start
-     *    → close the active cycle, create the next one
-     *  - If this date is within 7 days of the active cycle start
-     *    → it's the same period, just update the start date if earlier
+     * Recomputes every cycle for a user from scratch, based purely on the
+     * period marks that currently exist in cycle_day_marks. This is the
+     * single source of truth for cycle boundaries — nothing else in this
+     * service creates, closes, or reassigns a Cycle row. Because it looks
+     * at ALL marks together every time, the order they were saved in never
+     * affects the result: mark 5th, then 6th, then 3rd — the outcome is
+     * identical to marking 3rd, 5th, 6th in that order.
      */
-    private void handlePeriodMark(Long userId, LocalDate periodDate) {
-        LocalDate today = LocalDate.now();
-
-     // Guard: skip only if ACTIVE cycle starts within 7 days of this date
-        // Historical closed cycles never block new period marks
-//        boolean activeNearby = cycleRepo.findActiveCycleByUserId(userId)
-//            .filter(c -> c.getStartDate() != null
-//                && Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), periodDate)) <= 7)
-//            .isPresent();
-//        if (activeNearby) {
-//            System.out.println("🔍 handlePeriodMark: active cycle within 7 days of "
-//                + periodDate + " — same period, skipping");
-//            return;
-//        }
-
-        Optional<Cycle> activeCycleOpt = cycleRepo.findActiveCycleByUserId(userId);
-        if (activeCycleOpt.isEmpty()) {
-            if (periodDate.isBefore(today.minusDays(45))) {
-                createHistoricalCycle(userId, periodDate);
-                recalculateHistoricalCycleLengths(userId);
-            } else {
-                createNewCycle(userId, periodDate);
-            }
-            return;
-        }
-
-        Cycle activeCycle = activeCycleOpt.get();
-
-        if (activeCycle.getStartDate() == null) {
-            // Active cycle exists but has no start date yet
-            if (periodDate.isBefore(today.minusDays(45))) {
-                // Past period — save as historical, don't touch active cycle
-                createHistoricalCycle(userId, periodDate);
-                // Always recalculate after adding historical cycle
-                recalculateHistoricalCycleLengths(userId);
-            } else {
-                // No start date yet — set it to this period date
-                activeCycle.setStartDate(periodDate);
-                cycleRepo.save(activeCycle);
-                // Also recalculate historical cycles to update gaps
-                recalculateHistoricalCycleLengths(userId);
-            }
-            return;
-        }
-
-        long daysSinceStart = ChronoUnit.DAYS.between(activeCycle.getStartDate(), periodDate);
-        long daysFromToday  = ChronoUnit.DAYS.between(periodDate, today);
-
-        if (daysFromToday > 45) {
-            // This is a past period mark — save as historical closed cycle
-            // Do NOT disturb the current active cycle
-            createHistoricalCycle(userId, periodDate);
-            recalculateHistoricalCycleLengths(userId);
-        } else if (daysSinceStart <= -18) {
-            // periodDate is well BEFORE the active cycle's start — this is a
-            // separate, earlier real cycle, not a correction to the active one.
-            // Without this branch, any backward gap fell through to the
-            // "same window" else-branch below and silently merged two
-            // different periods into one cycle (confirmed bug — Jun marks
-            // merging into the active Jul cycle).
-            createHistoricalCycle(userId, periodDate);
-            recalculateHistoricalCycleLengths(userId);
-        } else if (daysSinceStart >= 18) {
-            // Guard — prevent duplicate cycle if one already exists near this date
-            boolean cycleAlreadyExists = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
-                .stream()
-                .anyMatch(c -> c.getStartDate() != null
-                    && Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), periodDate)) < 5
-                    && !c.getId().equals(activeCycle.getId()));
-
-            if (!cycleAlreadyExists) {
-                // Count actual period marks for the cycle being closed BEFORE closing
-                // createNewCycle sets period_length from CycleSettings default (5)
-                // which is wrong — we need the actual marked days
-            	activeCycle.setEndDate(periodDate.minusDays(1));
-                activeCycle.setCycleLength((int) daysSinceStart);
-                cycleRepo.save(activeCycle);
-                createNewCycle(userId, periodDate);
-                recalculateHistoricalCycleLengths(userId);
-            } else {
-                System.out.println("🔍 Cycle already exists near " + periodDate + " — skipping duplicate");
-            }
-        } else {
-            // Same cycle window — only move start date EARLIER, never later
-            // Marking day 2, 3, 4 of period should NOT reset the cycle start
-            if (periodDate.isBefore(activeCycle.getStartDate())) {
-                activeCycle.setStartDate(periodDate);
-                cycleRepo.save(activeCycle);
-            }
-            // Never create a new cycle for same-window marks
-            // just save the mark without changing the cycle start
-            System.out.println("🔍 Same cycle window — no new cycle created for " + periodDate);
-        }
-    }
-    
-    
-    private Cycle createNewCycle(Long userId, LocalDate startDate) {
-        // Check if a cycle already exists starting within 5 days of this date
-        // to prevent duplicates from rapid re-marking
-        Optional<Cycle> nearbyActive = cycleRepo.findActiveCycleByUserId(userId);
-        if (nearbyActive.isPresent() && nearbyActive.get().getStartDate() != null) {
-            long daysDiff = Math.abs(ChronoUnit.DAYS.between(
-                nearbyActive.get().getStartDate(), startDate));
-            if (daysDiff < 5) {
-                System.out.println("🔍 Skipping duplicate cycle creation — existing active cycle "
-                    + nearbyActive.get().getStartDate() + " is only " + daysDiff + " days from " + startDate);
-                return nearbyActive.get();
-            }
-        }
-
-        CycleSettings settings = settingsRepo.findByUserId(userId).orElse(null);
-        int nextNumber = cycleRepo.findMaxCycleNumberByUserId(userId)
-            .map(n -> n + 1).orElse(1);
-
-        int cycleLen  = settings != null ? settings.getCycleLength()  : 28;
-        int periodLen = settings != null ? settings.getPeriodLength() : 5;
-
-        Cycle cycle = new Cycle();
-        cycle.setUserId(userId);
-        cycle.setCycleNumber(nextNumber);
-        cycle.setStartDate(startDate);   // ← always set start date
-        cycle.setCycleLength(cycleLen);
-        cycle.setPeriodLength(periodLen);
-        // endDate stays null — this is the active cycle
-
-        Cycle saved = cycleRepo.save(cycle);
-
-        // Auto-create CycleSettings if none exist
-        if (settings == null) {
-            CycleSettings newSettings = new CycleSettings();
-            newSettings.setUserId(userId);
-            newSettings.setCycleLength(28);
-            newSettings.setPeriodLength(5);
-            settingsRepo.save(newSettings);
-        }
-
-        // Backfill any orphaned marks (saved before a period was ever marked)
-        List<CycleDayMark> orphaned = markRepo.findByUserIdAndCycleIdIsNull(userId);
-        for (CycleDayMark orphan : orphaned) {
-            orphan.setCycleId(saved.getId());
-            markRepo.save(orphan);
-        }
-
-        return saved;
-    }
-
-    
-    /**
-     * Creates a completed historical cycle for a past period date.
-     * Sets both startDate and endDate so it is treated as closed.
-     * The current active cycle is NOT affected.
-     */
-    private void createHistoricalCycle(Long userId, LocalDate startDate) {
-        // Check if a cycle already exists for this SAME PERIOD — not just
-        // "startDate <= this date", which fails when marking backward
-        // (newest day first, then earlier days of the same period). Use a
-        // proximity window instead, matching the same-period logic already
-        // used for the active cycle in handlePeriodMark.
-        Optional<Cycle> existing = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
+    private void rebuildCycles(Long userId) {
+        List<CycleDayMark> periodMarks = markRepo.findAllPeriodMarksByUserId(userId)
             .stream()
-            .filter(c -> c.getStartDate() != null)
-            .filter(c -> Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), startDate)) <= 7)
-            .findFirst();
-        if (existing.isPresent()) {
-            Cycle c = existing.get();
-            // Only move start date EARLIER, never later
-            if (startDate.isBefore(c.getStartDate())) {
-                c.setStartDate(startDate);
-                cycleRepo.save(c);
-            }
-            return;
-        }
-
-        CycleSettings settings = settingsRepo.findByUserId(userId).orElse(null);
-        int defaultCycleLen = settings != null ? settings.getCycleLength()  : 28;
-        int periodLen       = settings != null ? settings.getPeriodLength() : 5;
-
-        // Calculate real cycle length = days between this period start
-        // and the next known period start (or active cycle start)
-        // Look for the next cycle that starts after this date
-        int realCycleLen = defaultCycleLen;
-
-        // Find all cycles for this user ordered by start date
-        List<Cycle> allCycles = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId);
-
-        // Find the next cycle start date after this startDate
-        LocalDate nextStart = allCycles.stream()
-            .filter(c -> c.getStartDate() != null && c.getStartDate().isAfter(startDate))
-            .map(Cycle::getStartDate)
-            .min(LocalDate::compareTo)
-            .orElse(null);
-
-        if (nextStart != null) {
-            int daysBetween = (int) ChronoUnit.DAYS.between(startDate, nextStart);
-            // Sanity check — only use if it's a plausible cycle length
-            if (daysBetween >= 20 && daysBetween <= 45) {
-                realCycleLen = daysBetween;
-            }
-        }
-
-        int nextNumber = cycleRepo.findMaxCycleNumberByUserId(userId)
-            .map(n -> n + 1).orElse(1);
-
-        Cycle historical = new Cycle();
-        historical.setUserId(userId);
-        historical.setCycleNumber(nextNumber);
-        historical.setStartDate(startDate);
-        historical.setEndDate(startDate.plusDays(realCycleLen - 1));
-        historical.setCycleLength(realCycleLen);
-        historical.setPeriodLength(0); // will be set from actual marks below
-
-        cycleRepo.save(historical);
-    }
-    
-    
-    /**
-     * After adding a new historical cycle, recalculate all closed cycle
-     * lengths based on actual gaps between consecutive period start dates.
-     */
-    private void recalculateHistoricalCycleLengths(Long userId) {
-        List<Cycle> allCycles = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId)
-            .stream()
-            .filter(c -> c.getStartDate() != null)
-            .sorted(Comparator.comparing(Cycle::getStartDate))
+            .sorted(Comparator.comparing(CycleDayMark::getMarkDate))
             .collect(Collectors.toList());
 
-        for (int i = 0; i < allCycles.size() - 1; i++) {
-            Cycle current = allCycles.get(i);
-            Cycle next    = allCycles.get(i + 1);
+        List<Cycle> existingCycles = cycleRepo.findByUserIdOrderByCycleNumberAsc(userId);
 
-            int daysBetween = (int) ChronoUnit.DAYS.between(
-                current.getStartDate(), next.getStartDate());
+        if (periodMarks.isEmpty()) {
+            // No period marks left at all — nothing to rebuild a cycle
+            // FROM, but any existing Cycle rows are now stale and must be
+            // removed, or the last active cycle stays stuck "active"
+            // forever with no marks backing it up. daily_logs.cycle_id is
+            // a plain Long column (no FK/cascade), so leaving those rows
+            // pointed at a deleted id is harmless — they just won't be
+            // picked up by findByCycleIdOrderByLogDateAsc anymore.
+            if (!existingCycles.isEmpty()) {
+                System.out.println("🗑️ rebuildCycles: no period marks remain for user "
+                    + userId + " — removing " + existingCycles.size() + " stale cycle(s)");
+                cycleRepo.deleteAll(existingCycles);
+                cycleRepo.flush();
+            }
+            return;
+        }
 
-            if (daysBetween >= 20 && daysBetween <= 45) {
-                current.setCycleLength(daysBetween);
-                current.setEndDate(next.getStartDate().minusDays(1));
-                cycleRepo.save(current);
+        // 1. Group marks into blocks — consecutive dates (gap <= MERGE_GAP_DAYS)
+        //    belong to the same real period, regardless of what order they
+        //    were saved in, since we're sorting by date first.
+        List<List<LocalDate>> blocks = new ArrayList<>();
+        List<LocalDate> current = new ArrayList<>();
+        LocalDate lastDate = null;
+        for (CycleDayMark m : periodMarks) {
+            LocalDate d = m.getMarkDate();
+            if (lastDate != null && ChronoUnit.DAYS.between(lastDate, d) > MERGE_GAP_DAYS) {
+                blocks.add(current);
+                current = new ArrayList<>();
+            }
+            current.add(d);
+            lastDate = d;
+        }
+        blocks.add(current);
+
+        CycleSettings settings = settingsRepo.findByUserId(userId).orElse(null);
+        int defaultCycleLen = settings != null ? settings.getCycleLength() : 28;
+
+        // 2. For each block, reuse an existing Cycle row if one already
+        //    exists near this block's start date (preserves the row's ID,
+        //    so daily_logs foreign keys stay valid across a rebuild).
+        //    Otherwise create a fresh row.
+        List<Cycle> rebuilt = new ArrayList<>();
+        for (List<LocalDate> block : blocks) {
+            LocalDate blockStart = block.get(0);
+
+            Cycle match = existingCycles.stream()
+                .filter(c -> c.getStartDate() != null)
+                .filter(c -> Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), blockStart)) <= MERGE_GAP_DAYS)
+                .min(Comparator.comparingLong(c ->
+                    Math.abs(ChronoUnit.DAYS.between(c.getStartDate(), blockStart))))
+                .orElse(null);
+
+            Cycle cycle = (match != null) ? match : new Cycle();
+            cycle.setUserId(userId);
+            cycle.setStartDate(blockStart);
+            cycle.setPeriodLength(block.size()); // always the real, current count
+            rebuilt.add(cycle);
+            if (match != null) existingCycles.remove(match);
+        }
+
+        // 3. Close every cycle except the most recent one — the newest
+        //    block is always the active cycle. No two cycles can ever
+        //    overlap: endDate is always the day before the next start.
+        for (int i = 0; i < rebuilt.size(); i++) {
+            Cycle c = rebuilt.get(i);
+            if (i < rebuilt.size() - 1) {
+                LocalDate nextStart = rebuilt.get(i + 1).getStartDate();
+                int gap = (int) ChronoUnit.DAYS.between(c.getStartDate(), nextStart);
+                c.setEndDate(nextStart.minusDays(1));
+                c.setCycleLength(gap >= MIN_CYCLE_GAP && gap <= MAX_CYCLE_GAP ? gap : defaultCycleLen);
+            } else {
+                c.setEndDate(null);
+                c.setCycleLength(c.getCycleLength() != null ? c.getCycleLength() : defaultCycleLen);
+            }
+            c.setCycleNumber(i + 1); // chronological numbering, always
+            cycleRepo.save(c);
+        }
+        cycleRepo.flush();
+
+        // 4. Reassign every period mark to its block's (possibly reused,
+        //    possibly new) cycle ID.
+        for (int i = 0; i < blocks.size(); i++) {
+            Long cycleId = rebuilt.get(i).getId();
+            for (LocalDate d : blocks.get(i)) {
+                markRepo.findByUserIdAndMarkDate(userId, d).ifPresent(m -> {
+                    if (!cycleId.equals(m.getCycleId())) {
+                        m.setCycleId(cycleId);
+                        markRepo.save(m);
+                    }
+                });
             }
         }
-    }
-    
-    /**
-     * Enforces the invariant every calculation in this service depends on:
-     * exactly one cycle per user may have end_date = NULL. If more than one
-     * exists — from any creation path disagreeing with another — this closes
-     * all but the one with the latest start_date, which is the only one that
-     * can legitimately still be in progress.
-     */
-    private void enforceSingleActiveCycle(Long userId) {
-        List<Cycle> openCycles = cycleRepo.findAllOpenCyclesOrderedByStartDesc(userId)
+
+        // 5. Non-period marks (spotting, discharge, etc.) get reassigned
+        //    to whichever cycle's date range they now fall inside.
+        List<CycleDayMark> nonPeriodMarks = markRepo.findByUserIdAndDateRange(
+                userId, rebuilt.get(0).getStartDate(), LocalDate.now().plusDays(1))
             .stream()
-            .filter(c -> c.getStartDate() != null)
+            .filter(m -> m.getMarkType() != 1)
             .collect(Collectors.toList());
-
-        if (openCycles.size() <= 1) return;
-
-        System.out.println("⚠️ enforceSingleActiveCycle: found " + openCycles.size()
-            + " open cycles for user " + userId + " — closing all but the most recent");
-
-        for (int i = 1; i < openCycles.size(); i++) {
-            Cycle stale    = openCycles.get(i);
-            Cycle closesAt = openCycles.get(i - 1);
-            stale.setEndDate(closesAt.getStartDate().minusDays(1));
-            stale.setCycleLength((int) ChronoUnit.DAYS.between(
-                stale.getStartDate(), closesAt.getStartDate()));
-            cycleRepo.save(stale);
-            System.out.println("   closed stale cycle id=" + stale.getId()
-                + " start=" + stale.getStartDate() + " end=" + stale.getEndDate());
-        }
-    }
-    
-    /**
-     * Finds the cycle_id that a given date belongs to.
-     *
-     * markType == 1 (Period): creates a new cycle if none exists
-     * markType != 1 (Spotting/Discharge/Bleeding/Other): returns null
-     *   if no cycle exists — caller must skip saving the mark
-     */
-    private Long resolveCycleIdForDate(Long userId, LocalDate date, int markType) {
-        // First try to find cycle by date range
-        Optional<Cycle> byDate = cycleRepo.findCycleForDate(userId, date);
-        if (byDate.isPresent()) return byDate.get().getId();
-
-        // Then try active cycle
-        Optional<Cycle> active = cycleRepo.findActiveCycleByUserId(userId);
-        if (active.isPresent()) {
-            Cycle c = active.get();
-            // Only set startDate if this is a period mark (type=1)
-            // Non-period marks must NEVER set startDate — that would
-            // make getCycleState think a period has started
-            if (c.getStartDate() == null && markType == 1) {
-                c.setStartDate(date);
-                cycleRepo.save(c);
+        for (CycleDayMark m : nonPeriodMarks) {
+            Cycle owner = rebuilt.stream()
+                .filter(c -> !c.getStartDate().isAfter(m.getMarkDate()))
+                .filter(c -> c.getEndDate() == null || !c.getEndDate().isBefore(m.getMarkDate()))
+                .max(Comparator.comparing(Cycle::getStartDate))
+                .orElse(null);
+            if (owner != null && !owner.getId().equals(m.getCycleId())) {
+                m.setCycleId(owner.getId());
+                markRepo.save(m);
             }
-            return c.getId();
         }
 
-        // No cycle exists
-        if (markType == 1) {
-            return createNewCycle(userId, date).getId();
+        // 6. Any existing Cycle rows that weren't matched to any block are
+        //    now obsolete (their marks were merged elsewhere, or deleted
+        //    entirely). Move any daily_logs still pointing at them to the
+        //    nearest surviving cycle by date, then remove the row.
+        for (Cycle orphan : existingCycles) {
+            List<DailyLog> orphanedLogs = logRepo.findByCycleIdOrderByLogDateAsc(orphan.getId());
+            for (DailyLog log : orphanedLogs) {
+                Cycle bestMatch = rebuilt.stream()
+                    .filter(c -> !c.getStartDate().isAfter(log.getLogDate()))
+                    .max(Comparator.comparing(Cycle::getStartDate))
+                    .orElse(rebuilt.get(0));
+                log.setCycleId(bestMatch.getId());
+                logRepo.save(log);
+            }
+            cycleRepo.delete(orphan);
         }
-
-        // Non-period mark with no existing cycle — return null
-        return null;
+        cycleRepo.flush();
     }
+   
+    
+    
+    
+    
+   
+    
+ 
+  
+   
+   
     // ═════════════════════════════════════════════════════════════════════════
     //  Phase computation
     // ═════════════════════════════════════════════════════════════════════════
