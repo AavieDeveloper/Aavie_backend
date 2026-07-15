@@ -48,6 +48,18 @@ public class OtpService {
         this.tokenProvider   = tokenProvider;
         this.passwordEncoder = passwordEncoder;
     }
+    
+    
+ // ── Step 0 — Check if mobile is registered (no SMS sent) ──────────────────
+    public Map<String, Object> checkMobile(String mobileNumber) {
+        String clean = cleanNumber(mobileNumber);
+        Optional<UserProfile> existing = userRepo.findByMobileNumber(clean);
+        boolean isNewUser = existing.isEmpty();
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("isNewUser", isNewUser);
+        return result;
+    }
 
     // ── Step 1 — Send OTP ─────────────────────────────────────────────────────
     public Map<String, Object> sendOtp(String mobileNumber) {

@@ -20,6 +20,23 @@ public class OtpController {
         this.otpService = otpService;
     }
 
+    
+ // Step 0 — Check if mobile number is already registered (no SMS sent)
+    @GetMapping("/check-mobile")
+    public ResponseEntity<?> checkMobile(@RequestParam String mobileNumber) {
+        try {
+            if (mobileNumber == null || mobileNumber.isBlank()) {
+                return ResponseEntity.badRequest()
+                    .body(Map.of("message", "Mobile number is required"));
+            }
+            Map<String, Object> result = otpService.checkMobile(mobileNumber);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Could not check mobile number."));
+        }
+    }
+
     // Step 1 — Send OTP to mobile number
     @PostMapping("/send-otp")
     public ResponseEntity<?> sendOtp(@RequestBody Map<String, String> body) {

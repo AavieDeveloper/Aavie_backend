@@ -18,4 +18,8 @@ public interface SupplementOrderRepository
 
     // All orders linked to a specific plan
     List<SupplementOrder> findByPlanIdOrderByOrderedAtDesc(Long planId);
+    
+    /** All orders across all users, placed within a given date-time range */
+    List<SupplementOrder> findByOrderedAtBetweenOrderByOrderedAtDesc(
+        java.time.LocalDateTime start, java.time.LocalDateTime end);
 }

@@ -255,6 +255,22 @@ public ResponseEntity<?> verifyPayment(@RequestBody Map<String, String> body) {
         }
     }
     
+ // ── GET /api/protocol/orders?date=2026-07-14 ──────────────────────────────
+    // Called by the admin dashboard - all orders across all users for one day.
+    @GetMapping("/orders")
+    public ResponseEntity<?> getOrdersByDate(
+        @RequestParam @org.springframework.format.annotation.DateTimeFormat(
+            iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date
+    ) {
+        try {
+            List<OrderResponse> orders = protocolService.getOrdersForDate(date);
+            return ResponseEntity.ok(orders);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Failed to fetch orders: " + e.getMessage()));
+        }
+    }
+    
  // ── PATCH /api/protocol/orders/{orderId}/status ───────────────────────────
     // Called by the order-tracking admin panel to change delivery status.
     // Body: { "status": "dispatched" }

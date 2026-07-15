@@ -253,6 +253,25 @@ public class ProtocolService {
     }
     
  // ════════════════════════════════════════════════════════════════════════
+    //  GET ALL ORDERS FOR A GIVEN DATE (across all users)
+    //  Called by the order-tracking admin dashboard's "today's orders" view.
+    // ════════════════════════════════════════════════════════════════════════
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getOrdersForDate(java.time.LocalDate date) {
+        java.time.LocalDateTime startOfDay = date.atStartOfDay();
+        java.time.LocalDateTime endOfDay = date.plusDays(1).atStartOfDay().minusNanos(1);
+
+        List<SupplementOrder> orders =
+            orderRepo.findByOrderedAtBetweenOrderByOrderedAtDesc(startOfDay, endOfDay);
+
+        return orders.stream().map(o -> {
+            SupplementPlan plan = planRepo.findById(o.getPlanId()).orElse(null);
+            return toOrderResponse(o, plan);
+        }).collect(Collectors.toList());
+    }
+    
+ // ════════════════════════════════════════════════════════════════════════
     //  UPDATE ORDER STATUS
     //  Called by the order-tracking admin panel. Changes deliveryStatus on
     //  an existing order. This is the write that the React Native app reads
