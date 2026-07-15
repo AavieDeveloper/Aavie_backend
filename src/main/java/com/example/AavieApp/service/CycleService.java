@@ -346,6 +346,7 @@ public class CycleService {
         private int avgEnergy;
         private int symptomDays;
         private int loggedDays;
+        private String startDate; // ISO date string, e.g. "2026-05-14"
 
         public int getCycleLength()          { return cycleLength; }
         public void setCycleLength(int v)     { this.cycleLength = v; }
@@ -359,6 +360,8 @@ public class CycleService {
         public void setSymptomDays(int v)     { this.symptomDays = v; }
         public int getLoggedDays()            { return loggedDays; }
         public void setLoggedDays(int v)      { this.loggedDays = v; }
+        public String getStartDate()          { return startDate; }
+        public void setStartDate(String v)    { this.startDate = v; }
     }
     
     @Transactional(readOnly = true)
@@ -1434,17 +1437,18 @@ public class CycleService {
                 ? (int) actualPeriodMarks
                 : 0; // 0 means no data — frontend will show "—"
 
-        CyclePreviousStats stats = new CyclePreviousStats();
-        stats.setCycleLength(storedLen);
-        stats.setPeriodLength(actualPeriodLength);
-        stats.setAvgMood(moods.isEmpty() ? 0
-            : moods.stream().mapToInt(i -> i).sum() / moods.size());
-        stats.setAvgEnergy(energies.isEmpty() ? 0
-            : energies.stream().mapToInt(i -> i).sum() / energies.size());
-        stats.setSymptomDays(symptomDays.size());
-        stats.setLoggedDays(logs.size());
-        return stats;
-    }
+            CyclePreviousStats stats = new CyclePreviousStats();
+            stats.setCycleLength(storedLen);
+            stats.setPeriodLength(actualPeriodLength);
+            stats.setAvgMood(moods.isEmpty() ? 0
+                : moods.stream().mapToInt(i -> i).sum() / moods.size());
+            stats.setAvgEnergy(energies.isEmpty() ? 0
+                : energies.stream().mapToInt(i -> i).sum() / energies.size());
+            stats.setSymptomDays(symptomDays.size());
+            stats.setLoggedDays(logs.size());
+            stats.setStartDate(cycle.getStartDate() != null ? cycle.getStartDate().toString() : null);
+            return stats;
+        }
     
     private Map<String, Long> computeSymptomCounts(List<DailyLog> logs) {
         Map<String, Long> counts = new LinkedHashMap<>();

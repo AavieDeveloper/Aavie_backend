@@ -60,6 +60,9 @@ public class UserProfileService {
         private String  prakruti;
         private String  vikriti;
         private String  createdAt;  // ISO-8601 string
+        private String  email;
+        private String  mobileNumber;
+        private String  updatedAt;
  
         // Builder-style setters for convenience
         public ProfileResponse id(Long id)                            { this.id = id;                         return this; }
@@ -71,6 +74,9 @@ public class UserProfileService {
         public ProfileResponse prakruti(String prakruti)              { this.prakruti = prakruti;             return this; }
         public ProfileResponse vikriti(String vikriti)                { this.vikriti = vikriti;               return this; }
         public ProfileResponse createdAt(String createdAt)            { this.createdAt = createdAt;           return this; }
+        public ProfileResponse email(String email)                    { this.email = email;                   return this; }
+        public ProfileResponse mobileNumber(String mobileNumber)      { this.mobileNumber = mobileNumber;     return this; }
+        public ProfileResponse updatedAt(String updatedAt)            { this.updatedAt = updatedAt;           return this; }
  
         private Integer height;
         private Integer weight;
@@ -87,6 +93,9 @@ public class UserProfileService {
         public String  getPrakruti()          { return prakruti; }
         public String  getVikriti()           { return vikriti; }
         public String  getCreatedAt()         { return createdAt; }
+        public String  getEmail()             { return email; }
+        public String  getMobileNumber()      { return mobileNumber; }
+        public String  getUpdatedAt()         { return updatedAt; }
     
     }
  
@@ -126,6 +135,20 @@ public class UserProfileService {
             .orElseThrow(() -> new RuntimeException("Profile not found with id: " + id));
         return toResponse(profile);
     }
+
+    /**
+     * Retrieve all user profiles, most recently created first.
+     * Called by GET /api/user/profile
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<ProfileResponse> getAllProfiles() {
+        return repo.findAll(
+                    org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+                .stream()
+                .map(this::toResponse)
+                .collect(java.util.stream.Collectors.toList());
+    }
  
     /**
      * Update an existing profile.
@@ -147,12 +170,15 @@ public class UserProfileService {
     		    .age(p.getAge())
     		    .city(p.getCity())
     		    .gender(p.getGender())
+    		    .email(p.getEmail())
+    		    .mobileNumber(p.getMobileNumber())
     		    .profileCompletion(p.getProfileCompletion())
     		    .prakruti(p.getPrakruti())
     		    .vikriti(p.getVikriti())
     		    .height(p.getHeight())
     		    .weight(p.getWeight())
-    		    .createdAt(p.getCreatedAt() != null ? p.getCreatedAt().toString() : null);
+    		    .createdAt(p.getCreatedAt() != null ? p.getCreatedAt().toString() : null)
+    		    .updatedAt(p.getUpdatedAt() != null ? p.getUpdatedAt().toString() : null);
     }
  
     private int calculateCompletion(UserProfile p) {
@@ -167,4 +193,3 @@ public class UserProfileService {
         return Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase();
     }
 }
- 

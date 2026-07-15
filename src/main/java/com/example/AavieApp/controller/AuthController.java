@@ -71,4 +71,20 @@ public class AuthController {
                 .body(Map.of("message", "Login failed. Please try again."));
         }
     }
+    
+    @PostMapping("/login/order-admin")
+    public ResponseEntity<?> orderAdminLogin(@RequestBody LoginRequest req) {
+        try {
+            AuthResponse res = service.orderAdminLogin(req);
+            return ResponseEntity.ok(res);
+        } catch (RuntimeException e) {
+            return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Login failed. Please try again."));
+        }
+    }
 }

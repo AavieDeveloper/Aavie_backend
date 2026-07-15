@@ -1,16 +1,13 @@
 package com.example.AavieApp.controller;
-
 import com.example.AavieApp.service.UserProfileService.CreateProfileRequest;
 import com.example.AavieApp.service.UserProfileService.ProfileResponse;
 import com.example.AavieApp.service.UserProfileService;
-
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
  
 import java.util.Map;
-
 @RestController
 @RequestMapping("/api/user")
 @CrossOrigin(origins = "*")   // Replace with specific origin in production
@@ -38,6 +35,17 @@ public class UserProfileController {
                 .body(Map.of("message", "Failed to create profile. Please try again."));
         }
     }
+
+    @GetMapping("/profile")
+    public ResponseEntity<?> getAllProfiles() {
+        try {
+            return ResponseEntity.ok(service.getAllProfiles());
+        } catch (Exception e) {
+            return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Failed to fetch users."));
+        }
+    }
  
    
     @GetMapping("/profile/{id}")
@@ -57,4 +65,3 @@ public class UserProfileController {
         return ResponseEntity.ok(Map.of("status", "ok", "service", "Aavie User Profile API"));
     }
 }
- 

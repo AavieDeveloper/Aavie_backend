@@ -251,6 +251,34 @@ public class ProtocolService {
             return toOrderResponse(o, plan);
         }).collect(Collectors.toList());
     }
+    
+ // ════════════════════════════════════════════════════════════════════════
+    //  UPDATE ORDER STATUS
+    //  Called by the order-tracking admin panel. Changes deliveryStatus on
+    //  an existing order. This is the write that the React Native app reads
+    //  back via GET /orders/{userId} (o.deliveryStatus).
+    // ════════════════════════════════════════════════════════════════════════
+
+    private static final List<String> VALID_STATUSES = List.of(
+        "vaidya_review", "blending", "dispatched", "delivered", "cancelled"
+    );
+
+    public OrderResponse updateOrderStatus(Long orderId, String newStatus) {
+        if (!VALID_STATUSES.contains(newStatus)) {
+            throw new IllegalArgumentException(
+                "Invalid status: " + newStatus + ". Must be one of " + VALID_STATUSES
+            );
+        }
+
+        SupplementOrder order = orderRepo.findById(orderId)
+            .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+
+        order.setDeliveryStatus(newStatus);
+        SupplementOrder saved = orderRepo.save(order);
+
+        SupplementPlan plan = planRepo.findById(saved.getPlanId()).orElse(null);
+        return toOrderResponse(saved, plan);
+    }
 
     // ════════════════════════════════════════════════════════════════════════
     //  MAPPERS

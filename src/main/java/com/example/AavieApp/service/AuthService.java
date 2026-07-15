@@ -224,6 +224,33 @@ public class AuthService {
             "Admin login successful", token, profile.getRole()
         );
     }
+    
+ // NEW: Order-tracking admin login
+    @Transactional(readOnly = true)
+    public AuthResponse orderAdminLogin(LoginRequest req) {
+        String email = req.getEmail().trim().toLowerCase();
+
+        Authentication authentication = authenticationManager.authenticate(
+            new UsernamePasswordAuthenticationToken(email, req.getPassword().trim())
+        );
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        UserProfile profile = repo.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("No account found with this email."));
+
+        if (!"ORDER_ADMIN".equals(profile.getRole())) {
+            throw new RuntimeException("Access denied. Order admin credentials required.");
+        }
+
+        String token = tokenProvider.generateToken(
+            profile.getId(), profile.getEmail(), profile.getRole()
+        );
+
+        return new AuthResponse(
+            profile.getId(), profile.getGender(), profile.getName(),
+            "Order admin login successful", token, profile.getRole()
+        );
+    }
 
     // ── Helper ────────────────────────────────────────────────────────────────
 

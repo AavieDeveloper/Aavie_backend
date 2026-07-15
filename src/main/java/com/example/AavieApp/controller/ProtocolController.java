@@ -254,4 +254,31 @@ public ResponseEntity<?> verifyPayment(@RequestBody Map<String, String> body) {
                 .body(Map.of("message", "Failed to fetch orders: " + e.getMessage()));
         }
     }
+    
+ // ── PATCH /api/protocol/orders/{orderId}/status ───────────────────────────
+    // Called by the order-tracking admin panel to change delivery status.
+    // Body: { "status": "dispatched" }
+    @PatchMapping("/orders/{orderId}/status")
+    public ResponseEntity<?> updateOrderStatus(
+        @PathVariable Long orderId,
+        @RequestBody Map<String, String> body
+    ) {
+        try {
+            String newStatus = body.get("status");
+            if (newStatus == null || newStatus.isBlank()) {
+                return ResponseEntity.badRequest()
+                    .body(Map.of("message", "status is required"));
+            }
+            OrderResponse response = protocolService.updateOrderStatus(orderId, newStatus);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Failed to update order status: " + e.getMessage()));
+        }
+    }
 }
