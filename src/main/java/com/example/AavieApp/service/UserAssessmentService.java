@@ -126,6 +126,7 @@ public class UserAssessmentService {
         private Integer liverScore;
         private String  prakritiKey;
         private String  completedAt;
+        private String  answersJson;
         // Assessment progress
         private boolean prakritiDone;
         private boolean pcosDone;
@@ -178,8 +179,10 @@ public class UserAssessmentService {
         public void    setLiverScore(Integer l)  { this.liverScore = l; }
         public String  getPrakritiKey()          { return prakritiKey; }
         public void    setPrakritiKey(String p)  { this.prakritiKey = p; }
-        public String  getCompletedAt()          { return completedAt; }
+      public String  getCompletedAt()          { return completedAt; }
         public void    setCompletedAt(String c)  { this.completedAt = c; }
+        public String  getAnswersJson()           { return answersJson; }
+        public void    setAnswersJson(String j)   { this.answersJson = j; }
         public boolean isPrakritiDone()          { return prakritiDone; }
         public void    setPrakritiDone(boolean b){ this.prakritiDone = b; }
         public boolean isPcosDone()              { return pcosDone; }
@@ -423,7 +426,8 @@ public class UserAssessmentService {
         r.setLiverScore(a.getLiverScore());
         r.setPrakritiKey(a.getPrakritiKey());
         r.setSelectedSignals(a.getSelectedSignals());
-        r.setCompletedAt(a.getUpdatedAt() != null ? a.getUpdatedAt().toString() : null);
+       r.setCompletedAt(a.getUpdatedAt() != null ? a.getUpdatedAt().toString() : null);
+        r.setAnswersJson(a.getAnswersJson());
         
         r.setAmaDetected(a.getAmaDetected());
 

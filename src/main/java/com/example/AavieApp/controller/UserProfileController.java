@@ -60,9 +60,25 @@ public class UserProfileController {
     }
  
    
-    @GetMapping("/profile/{id}")
-    public ResponseEntity<?> getProfile(@PathVariable Long id) {
+   @GetMapping("/profile/{id}")
+    public ResponseEntity<?> getProfile(
+        @PathVariable Long id,
+        org.springframework.security.core.Authentication authentication,
+        jakarta.servlet.http.HttpServletRequest request
+    ) {
         try {
+            Object requesterIdAttr = request.getAttribute("userId");
+            boolean isSelf = requesterIdAttr != null
+                && id.equals(((Number) requesterIdAttr).longValue());
+            boolean isPrivilegedRole = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")
+                            || a.getAuthority().equals("ROLE_ORDER_ADMIN"));
+
+            if (!isSelf && !isPrivilegedRole) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "You may only view your own profile."));
+            }
+
             return ResponseEntity.ok(service.getProfile(id));
         } catch (RuntimeException e) {
             return ResponseEntity
