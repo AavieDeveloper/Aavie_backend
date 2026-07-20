@@ -271,6 +271,15 @@ public class ProtocolService {
         }).collect(Collectors.toList());
     }
     
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getAllOrdersEverywhere() {
+        List<SupplementOrder> orders = orderRepo.findAllByOrderByOrderedAtDesc();
+        return orders.stream().map(o -> {
+            SupplementPlan plan = planRepo.findById(o.getPlanId()).orElse(null);
+            return toOrderResponse(o, plan);
+        }).collect(Collectors.toList());
+    }
+    
  // ════════════════════════════════════════════════════════════════════════
     //  UPDATE ORDER STATUS
     //  Called by the order-tracking admin panel. Changes deliveryStatus on

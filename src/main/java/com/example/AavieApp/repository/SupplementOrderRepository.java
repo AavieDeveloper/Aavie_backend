@@ -2,6 +2,8 @@ package com.example.AavieApp.repository;
 
 import com.example.AavieApp.model.SupplementOrder;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +20,13 @@ public interface SupplementOrderRepository
 
     // All orders linked to a specific plan
     List<SupplementOrder> findByPlanIdOrderByOrderedAtDesc(Long planId);
+    
+    /** All orders across all users, no date filter, newest first */
+    List<SupplementOrder> findAllByOrderByOrderedAtDesc();
+    
+    /** All distinct userIds that have placed at least one order - used for admin filtering */
+    @Query("SELECT DISTINCT o.userId FROM SupplementOrder o")
+    List<Long> findDistinctUserIds();
     
     /** All orders across all users, placed within a given date-time range */
     List<SupplementOrder> findByOrderedAtBetweenOrderByOrderedAtDesc(

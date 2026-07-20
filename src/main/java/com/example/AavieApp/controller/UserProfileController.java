@@ -35,6 +35,18 @@ public class UserProfileController {
                 .body(Map.of("message", "Failed to create profile. Please try again."));
         }
     }
+    
+    
+    @GetMapping("/profile/filter-meta")
+    public ResponseEntity<?> getUserFilterMeta() {
+        try {
+            return ResponseEntity.ok(service.getUserFilterMeta());
+        } catch (Exception e) {
+            return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Failed to fetch filter data."));
+        }
+    }
 
     @GetMapping("/profile")
     public ResponseEntity<?> getAllProfiles() {

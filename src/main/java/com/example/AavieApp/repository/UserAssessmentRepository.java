@@ -3,6 +3,7 @@ package com.example.AavieApp.repository;
 import com.example.AavieApp.model.UserAssessment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,10 @@ public interface UserAssessmentRepository extends JpaRepository<UserAssessment, 
     long countByUserId(Long userId);
     
     long countByAssessmentType(String assessmentType);
+    
+    /** All userIds that have completed a given assessment type - used for admin filtering */
+    @Query("SELECT DISTINCT a.userId FROM UserAssessment a WHERE a.assessmentType = :type")
+    List<Long> findUserIdsByAssessmentType(String type);
     
     @Modifying
     @Transactional

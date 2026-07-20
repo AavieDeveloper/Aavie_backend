@@ -271,6 +271,21 @@ public ResponseEntity<?> verifyPayment(@RequestBody Map<String, String> body) {
         }
     }
     
+ // ── GET /api/protocol/orders/all ──────────────────────────────────────────
+    // Called by the admin dashboard when no date filter is applied - every
+    // order across all users, unfiltered. No pagination yet - fine at low
+    // order volume, will need pagination once counts grow into the thousands.
+    @GetMapping("/orders/all")
+    public ResponseEntity<?> getAllOrders() {
+        try {
+            List<OrderResponse> orders = protocolService.getAllOrdersEverywhere();
+            return ResponseEntity.ok(orders);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", "Failed to fetch orders: " + e.getMessage()));
+        }
+    }
+    
  // ── PATCH /api/protocol/orders/{orderId}/status ───────────────────────────
     // Called by the order-tracking admin panel to change delivery status.
     // Body: { "status": "dispatched" }

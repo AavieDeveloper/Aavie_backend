@@ -67,7 +67,9 @@ public class SecurityConfig {
             	    .requestMatchers("/api/admin/**").hasRole("ADMIN")
             	    .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/api/protocol/orders/*/status")
             	        .hasAnyRole("ADMIN", "ORDER_ADMIN")
-            	    .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/protocol/orders")
+            	        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/protocol/orders")
+            	        .hasAnyRole("ADMIN", "ORDER_ADMIN")
+            	    .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/protocol/orders/all")
             	        .hasAnyRole("ADMIN", "ORDER_ADMIN")
             	    // All other endpoints require authentication
             	    .anyRequest().authenticated()

@@ -20,8 +20,17 @@ public class UserProfileService {
  
     private final UserProfileRepository repo;
  
-    public UserProfileService(UserProfileRepository repo) {
+    private final com.example.AavieApp.repository.UserAssessmentRepository assessRepo;
+    private final com.example.AavieApp.repository.SupplementOrderRepository orderRepo;
+
+    public UserProfileService(
+        UserProfileRepository repo,
+        com.example.AavieApp.repository.UserAssessmentRepository assessRepo,
+        com.example.AavieApp.repository.SupplementOrderRepository orderRepo
+    ) {
         this.repo = repo;
+        this.assessRepo = assessRepo;
+        this.orderRepo = orderRepo;
     }
  
     // ── DTOs ──────────────────────────────────────────────────────────────────
@@ -98,6 +107,23 @@ public class UserProfileService {
         public String  getUpdatedAt()         { return updatedAt; }
     
     }
+    
+    /** Bundle of userId sets used to power admin filter checkboxes */
+    public static class UserFilterMeta {
+        private java.util.List<Long> prakritiDoneIds;
+        private java.util.List<Long> pcosDoneIds;
+        private java.util.List<Long> vikritiDoneIds;
+        private java.util.List<Long> hasOrderedIds;
+
+        public java.util.List<Long> getPrakritiDoneIds()      { return prakritiDoneIds; }
+        public void setPrakritiDoneIds(java.util.List<Long> v){ this.prakritiDoneIds = v; }
+        public java.util.List<Long> getPcosDoneIds()          { return pcosDoneIds; }
+        public void setPcosDoneIds(java.util.List<Long> v)    { this.pcosDoneIds = v; }
+        public java.util.List<Long> getVikritiDoneIds()       { return vikritiDoneIds; }
+        public void setVikritiDoneIds(java.util.List<Long> v) { this.vikritiDoneIds = v; }
+        public java.util.List<Long> getHasOrderedIds()        { return hasOrderedIds; }
+        public void setHasOrderedIds(java.util.List<Long> v)  { this.hasOrderedIds = v; }
+    }
  
     // ── Service Methods ───────────────────────────────────────────────────────
  
@@ -149,17 +175,19 @@ public class UserProfileService {
                 .map(this::toResponse)
                 .collect(java.util.stream.Collectors.toList());
     }
+    
+    
+    @Transactional(readOnly = true)
+    public UserFilterMeta getUserFilterMeta() {
+        UserFilterMeta meta = new UserFilterMeta();
+        meta.setPrakritiDoneIds(assessRepo.findUserIdsByAssessmentType("PRAKRITI"));
+        meta.setPcosDoneIds(assessRepo.findUserIdsByAssessmentType("PCOS"));
+        meta.setVikritiDoneIds(assessRepo.findUserIdsByAssessmentType("VIKRITI"));
+        meta.setHasOrderedIds(orderRepo.findDistinctUserIds());
+        return meta;
+    }
  
-    /**
-     * Update an existing profile.
-     * Called by PUT /api/user/profile/{id}
-     */
-  
- 
-    /**
-     * Delete a profile.
-     * Called by DELETE /api/user/profile/{id}
-     */
+   
   
     // ── Private Helpers ───────────────────────────────────────────────────────
  
