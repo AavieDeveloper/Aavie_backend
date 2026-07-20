@@ -65,9 +65,13 @@ public class SecurityConfig {
             	        "/error"
             	    ).permitAll()
             	    .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+            	    .requestMatchers("/api/user/profile", "/api/user/profile/**")
+            	        .hasAnyRole("ADMIN", "ORDER_ADMIN")
+ 
             	    .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/api/protocol/orders/*/status")
             	        .hasAnyRole("ADMIN", "ORDER_ADMIN")
-            	        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/protocol/orders")
+            	    .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/protocol/orders")
             	        .hasAnyRole("ADMIN", "ORDER_ADMIN")
             	    .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/protocol/orders/all")
             	        .hasAnyRole("ADMIN", "ORDER_ADMIN")
