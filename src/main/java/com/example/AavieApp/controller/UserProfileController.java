@@ -92,4 +92,21 @@ public class UserProfileController {
     public ResponseEntity<?> health() {
         return ResponseEntity.ok(Map.of("status", "ok", "service", "Aavie User Profile API"));
     }
+    
+    
+    @PostMapping("/push-token")
+    public ResponseEntity<?> savePushToken(@RequestBody Map<String, Object> body,
+                                            jakarta.servlet.http.HttpServletRequest request) {
+        try {
+            Long userId = Long.valueOf(body.get("userId").toString());
+            String token = (String) body.get("token");
+            if (token == null || token.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Token is required"));
+            }
+            service.savePushToken(userId, token);
+            return ResponseEntity.ok(Map.of("saved", true));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("message", "Failed to save token"));
+        }
+    }
 }

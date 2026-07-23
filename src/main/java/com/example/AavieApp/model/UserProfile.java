@@ -46,6 +46,12 @@ public class UserProfile {
     
     @Column(unique = true)
     private String mobileNumber;
+    
+    @Column(name = "expo_push_token", length = 255)
+    private String expoPushToken;
+
+    public String getExpoPushToken()             { return expoPushToken; }
+    public void   setExpoPushToken(String token) { this.expoPushToken = token; }
 
     @Column
     private String vikriti;
@@ -72,6 +78,16 @@ public class UserProfile {
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+    
+    @Column(name = "last_notification_sent_at")
+    private LocalDateTime lastNotificationSentAt;
+
+    public LocalDateTime getLastNotificationSentAt() { 
+        return lastNotificationSentAt; 
+    }
+    public void setLastNotificationSentAt(LocalDateTime v) { 
+        this.lastNotificationSentAt = v; 
+    }
     
  
 
