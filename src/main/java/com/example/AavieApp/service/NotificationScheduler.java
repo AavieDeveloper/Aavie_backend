@@ -28,7 +28,7 @@ public class NotificationScheduler {
     }
 
     // ── Runs every day at 5:00 PM IST (11:30 UTC) ────────────────
-    @Scheduled(cron = "0 50 17 * * *", zone = "UTC")
+    @Scheduled(cron = "0 55 17 * * *", zone = "UTC")
     public void sendDailyAssessmentReminders() {
         System.out.println("🔔 Running daily assessment reminder job: "
             + LocalDateTime.now());
