@@ -31,7 +31,7 @@ public class NotificationScheduler {
     // ── Runs every day at 10:00 AM IST ───────────────────────────
     // Cron: second minute hour day month weekday
     // IST = UTC+5:30, so 10:00 AM IST = 04:30 UTC
-   @Scheduled(cron = "0 30 17 * * *", zone = "UTC")
+   @Scheduled(cron = "0 50 17 * * *", zone = "UTC")
 public void sendDailyAssessmentReminders() {
         System.out.println("🔔 Running daily assessment reminder job: "
             + LocalDateTime.now());
@@ -59,11 +59,7 @@ public void sendDailyAssessmentReminders() {
             if (prakritiDone && pcosDone && vikritiDone) continue;
 
             // Skip if notified in last 3 days
-            if (user.getLastNotificationSentAt() != null &&
-                user.getLastNotificationSentAt().isAfter(
-                    LocalDateTime.now().minusDays(3))) {
-                continue;
-            }
+           
 
             // Decide which notification to send based on what's missing
             String title;
@@ -86,9 +82,7 @@ public void sendDailyAssessmentReminders() {
             notificationService.sendToUser(userId, title, body);
 
             // Update last notification sent timestamp
-            user.setLastNotificationSentAt(LocalDateTime.now());
-            userRepo.save(user);
-        }
+        
 
         System.out.println("✅ Daily assessment reminders sent");
     }
@@ -115,11 +109,8 @@ public void sendDailyAssessmentReminders() {
             if (!prakritiDone) continue;
 
          // Skip if notified in last 3 days
-            if (user.getLastNotificationSentAt() != null &&
-                user.getLastNotificationSentAt().isAfter(
-                    LocalDateTime.now().minusDays(3))) {
-                continue;
-            }
+           
+         
 
             notificationService.sendToUser(
                 userId,
@@ -128,9 +119,7 @@ public void sendDailyAssessmentReminders() {
                 + "phase guidance, and your personalised protocol."
             );
 
-            user.setLastNotificationSentAt(LocalDateTime.now());
-            userRepo.save(user);
-        }
+          
 
         System.out.println("✅ Period marking reminders sent");
     }
@@ -157,12 +146,8 @@ public void sendDailyAssessmentReminders() {
                 && assessRepo.existsByUserIdAndAssessmentType(userId, "VIKRITI");
 
          // Skip if notified in last 3 days
-            if (user.getLastNotificationSentAt() != null &&
-                user.getLastNotificationSentAt().isAfter(
-                    LocalDateTime.now().minusDays(3))) {
-                continue;
-            }
-
+           
+         
             if (allDone) {
                 notificationService.sendToUser(
                     userId,
@@ -179,9 +164,7 @@ public void sendDailyAssessmentReminders() {
                 );
             }
 
-            user.setLastNotificationSentAt(LocalDateTime.now());
-            userRepo.save(user);
-        }
+           
 
         System.out.println("✅ Weekly re-engagement sent");
     }
