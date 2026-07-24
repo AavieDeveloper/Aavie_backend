@@ -39,7 +39,7 @@ public class CycleService {
     private final DailyLogRepository      logRepo;
     
     private static final int MERGE_GAP_DAYS = 10; // marks within this many days = same period
-    private static final int MIN_CYCLE_GAP  = 20; // shortest gap counted as a real cycle length
+    private static final int MIN_CYCLE_GAP  = 15; // shortest gap counted as a real cycle length
     private static final int MAX_CYCLE_GAP  = 45; // longest gap counted as a real cycle length
     
     private static final Map<String, Integer> MOOD_SCORE_MAP = Map.of(
