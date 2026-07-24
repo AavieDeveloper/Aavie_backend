@@ -223,9 +223,19 @@ public class UserProfileService {
     
     
     public void savePushToken(Long userId, String token) {
-        repo.findById(userId).ifPresent(user -> {
-            user.setExpoPushToken(token);
-            repo.save(user);
+    // Clear token from any other user who has this same token
+    repo.findAll().stream()
+        .filter(u -> token.equals(u.getExpoPushToken()) 
+               && !u.getId().equals(userId))
+        .forEach(u -> {
+            u.setExpoPushToken(null);
+            repo.save(u);
         });
-    }
+
+    // Save token to current user
+    repo.findById(userId).ifPresent(user -> {
+        user.setExpoPushToken(token);
+        repo.save(user);
+    });
+}
 }
