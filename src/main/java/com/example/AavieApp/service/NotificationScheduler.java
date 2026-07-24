@@ -2,14 +2,13 @@ package com.example.AavieApp.service;
 
 import com.example.AavieApp.model.UserProfile;
 import com.example.AavieApp.repository.UserAssessmentRepository;
-import com.example.AavieApp.repository.UserProfileRepository;
 import com.example.AavieApp.repository.CycleRepository;
+import com.example.AavieApp.repository.UserProfileRepository;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Component
 public class NotificationScheduler {
@@ -28,18 +27,15 @@ public class NotificationScheduler {
         this.notificationService = notificationService;
     }
 
-    // ── Runs every day at 10:00 AM IST ───────────────────────────
-    // Cron: second minute hour day month weekday
-    // IST = UTC+5:30, so 10:00 AM IST = 04:30 UTC
-   @Scheduled(cron = "0 50 17 * * *", zone = "UTC")
-public void sendDailyAssessmentReminders() {
+    // ── Runs every day at 5:00 PM IST (11:30 UTC) ────────────────
+    @Scheduled(cron = "0 50 17 * * *", zone = "UTC")
+    public void sendDailyAssessmentReminders() {
         System.out.println("🔔 Running daily assessment reminder job: "
             + LocalDateTime.now());
 
         List<UserProfile> allUsers = userRepo.findAll();
 
         for (UserProfile user : allUsers) {
-            // Skip users with no push token
             if (user.getExpoPushToken() == null
                     || user.getExpoPushToken().isBlank()) continue;
 
@@ -54,14 +50,15 @@ public void sendDailyAssessmentReminders() {
             boolean vikritiDone = assessRepo
                 .existsByUserIdAndAssessmentType(userId, "VIKRITI");
 
-            // All done — no notification needed
-         // All done — no notification needed
-            if (prakritiDone && pcosDone && vikritiDone) continue;
+            if (prakritiDone && pcosDone && vikritiDone) {
+                notificationService.sendToUser(
+                    userId,
+                    "Your AAVIE daily check-in 🌿",
+                    "Log today's symptoms and track your wellness journey."
+                );
+                continue;
+            }
 
-            // Skip if notified in last 3 days
-           
-
-            // Decide which notification to send based on what's missing
             String title;
             String body;
 
@@ -72,7 +69,8 @@ public void sendDailyAssessmentReminders() {
             } else if (!pcosDone) {
                 title = "One step closer, " + name + " 🌸";
                 body = "You've completed Prakriti! "
-                    + "Your Cycle Intelligence assessment is next — 5 minutes to understand your cycle.";
+                    + "Your Cycle Intelligence assessment is next — "
+                    + "5 minutes to understand your cycle.";
             } else {
                 title = "Last step, " + name + " ✨";
                 body = "Complete your Vikriti assessment to unlock your "
@@ -80,15 +78,12 @@ public void sendDailyAssessmentReminders() {
             }
 
             notificationService.sendToUser(userId, title, body);
-
-            // Update last notification sent timestamp
-        
+        }
 
         System.out.println("✅ Daily assessment reminders sent");
     }
 
     // ── Runs every day at 8:00 AM IST (02:30 UTC) ────────────────
-    // Reminds users who haven't marked their period this month
     @Scheduled(cron = "0 30 2 * * *", zone = "UTC")
     public void sendPeriodMarkingReminder() {
         System.out.println("🔔 Running period marking reminder job");
@@ -103,14 +98,9 @@ public void sendDailyAssessmentReminders() {
             String name = user.getName() != null
                 ? user.getName().split(" ")[0] : "there";
 
-            // Only remind users who completed at least Prakriti
             boolean prakritiDone = assessRepo
                 .existsByUserIdAndAssessmentType(userId, "PRAKRITI");
             if (!prakritiDone) continue;
-
-         // Skip if notified in last 3 days
-           
-         
 
             notificationService.sendToUser(
                 userId,
@@ -118,14 +108,12 @@ public void sendDailyAssessmentReminders() {
                 "Mark when your period started to unlock daily cycle insights, "
                 + "phase guidance, and your personalised protocol."
             );
-
-          
+        }
 
         System.out.println("✅ Period marking reminders sent");
     }
 
     // ── Runs every Sunday at 9:00 AM IST (03:30 UTC) ─────────────
-    // Weekly re-engagement for users who haven't opened the app
     @Scheduled(cron = "0 30 3 * * SUN", zone = "UTC")
     public void sendWeeklyReEngagement() {
         System.out.println("🔔 Running weekly re-engagement job");
@@ -145,9 +133,6 @@ public void sendDailyAssessmentReminders() {
                 && assessRepo.existsByUserIdAndAssessmentType(userId, "PCOS")
                 && assessRepo.existsByUserIdAndAssessmentType(userId, "VIKRITI");
 
-         // Skip if notified in last 3 days
-           
-         
             if (allDone) {
                 notificationService.sendToUser(
                     userId,
@@ -163,8 +148,7 @@ public void sendDailyAssessmentReminders() {
                     + "Your personalised assessment takes just 5 minutes."
                 );
             }
-
-           
+        }
 
         System.out.println("✅ Weekly re-engagement sent");
     }
